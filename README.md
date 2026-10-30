@@ -2,6 +2,12 @@
 
 Digital, offline-first replacement for the paper **Equipment-Specific Checklists** and **Master Inspection & Fitness Certificate** for wheelchairs, scoop stretchers, foldable stretchers and stretchers.
 
+## Live demo on Vercel
+
+`vercel.json` is already set up. In Vercel choose **Add New → Project → Import** this repository and press **Deploy**; no settings need changing. Every push to `main` redeploys.
+
+This publishes the browser-only demo (all 331 assets; each person's entries stay in their own browser). The full multi-user server (`npm start`) needs a host that runs Node.js with PostgreSQL.
+
 ## Run it on your computer
 
 **Windows, easiest:** unzip the folder, then double-click **`Start-Think-Inspect.bat`**. It sends you to the Node.js download page if Node is missing, installs everything on the first run (a few minutes), and opens http://localhost:4000. Keep the black window open while you use the app; closing it stops the app. If the browser opens before the app is ready, wait a few seconds and press Refresh.
