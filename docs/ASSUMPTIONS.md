@@ -40,3 +40,6 @@ Each item names the decision taken and where to change it.
     - The wheelchair (#3 Fail, "puncher" → puncture) is submitted, which puts it out of service.
     - The three scoop stretchers (all Pass) are finalised by the reviewer.
     - The signature images on these records are generated placeholders.
+
+## Access
+20. **One shared access code, no personal logins** (client decision). Anyone with the code has full access, including review and finalising. After entering it, each device asks who is using it; that name goes on signatures and in the audit trail. The remembered signature is stored per person on that device. The code defaults to `9999` and is changed with `ACCESS_CODE`. A 4-digit code is easy to guess, so use a longer one if the address is shared widely. The earlier role separation (inspector / reviewer / client admin) is no longer enforced, because everyone shares one account.

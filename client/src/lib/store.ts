@@ -17,7 +17,7 @@ async function technicianName(user: User): Promise<string> {
     const m = await db.team.get(user.teamMemberId);
     if (m?.active) return m.name;
   }
-  return user.role === 'inspector' ? user.name : '';
+  return user.name && user.name !== 'Team' ? user.name : '';
 }
 
 export async function createInspection(asset: Asset, user: User, opts: { kind?: 'routine' | 'retest'; retestOf?: string | null } = {}): Promise<string> {

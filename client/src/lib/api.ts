@@ -21,7 +21,10 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   if (IS_DEMO) return demoApi<T>(path, init);
   const s = getSession();
   const headers = new Headers(init.headers);
-  if (s) headers.set('Authorization', `Bearer ${s.token}`);
+  if (s) {
+    headers.set('Authorization', `Bearer ${s.token}`);
+    if (s.user.name && s.user.name !== 'Team') headers.set('X-User-Name', encodeURIComponent(s.user.name)); // who is using this device, for the audit trail
+  }
   let body = init.body;
   if (init.json !== undefined) { headers.set('Content-Type', 'application/json'); body = JSON.stringify(init.json); }
   const res = await fetch(`/api${path}`, { ...init, headers, body });

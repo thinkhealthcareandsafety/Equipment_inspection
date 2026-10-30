@@ -4,9 +4,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Bell, Building2, ChartColumn, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LogOut, RefreshCw, Settings, Users,
 } from 'lucide-react';
-import { formatDateTime, ROLE_LABELS } from '@think/shared';
+import { formatDateTime } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
-import { setSession } from '../lib/api.ts';
+import { getSession, setSession } from '../lib/api.ts';
+import { TeamSheet } from './Inputs.tsx';
 import { can, useUser } from '../lib/hooks.ts';
 import { discardFailed, retryFailed, syncNow, useSync } from '../lib/sync.ts';
 import { Badge, Button, cx, Sheet } from './ui.tsx';
@@ -23,6 +24,9 @@ export function Shell() {
   const [syncOpen, setSyncOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const dialogs = useDialogs();
+  const [whoOpen, setWhoOpen] = useState(false);
+  const [whoSkipped, setWhoSkipped] = useState(false);
+  const unnamed = user.name === 'Team';
   const reviewCount = useLiveQuery(() => db.inspections.where('status').equals('submitted').count(), []) ?? 0;
   const myDrafts = useLiveQuery(() => db.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id).count(), [user.id]) ?? 0;
   const unread = useLiveQuery(() => db.notifications.filter((n) => !n.read).count(), []) ?? 0;
@@ -40,10 +44,15 @@ export function Shell() {
   const primary = nav.filter((n) => ['Home', 'Sites', 'Review', 'Reports'].includes(n.label));
   const secondary = nav.filter((n) => !primary.includes(n));
 
+  const chooseName = (name: string) => {
+    const s = getSession();
+    if (s) setSession({ ...s, user: { ...s.user, name } });
+    setWhoOpen(false);
+  };
   const signOut = async () => {
     const pending = await db.outbox.count();
-    if (IS_DEMO && !(await dialogs.confirm('Signing out of the demo clears everything you entered in this browser.', { title: 'Sign out', confirmLabel: 'Sign out' }))) return;
-    if (!IS_DEMO && pending && !(await dialogs.confirm(`${pending} change(s) have not synced yet and will be lost. Sign out anyway?`, { title: 'Sign out', confirmLabel: 'Sign out anyway', danger: true }))) return;
+    if (IS_DEMO && !(await dialogs.confirm('Locking the demo clears everything you entered in this browser.', { title: 'Lock the app', confirmLabel: 'Lock' }))) return;
+    if (!IS_DEMO && pending && !(await dialogs.confirm(`${pending} change(s) have not synced yet and will be lost. Lock anyway?`, { title: 'Lock the app', confirmLabel: 'Lock anyway', danger: true }))) return;
     await wipeLocal();
     setSession(null);
   };
@@ -71,12 +80,14 @@ export function Shell() {
         <div className="space-y-3 p-4">
           <SyncPill dark onClick={() => setSyncOpen(true)} />
           <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-500 text-sm font-semibold text-white">{initials(user.name)}</div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium text-white">{user.name}</div>
-              <div className="text-xs text-slate-400">{ROLE_LABELS[user.role]}</div>
-            </div>
-            <button onClick={signOut} title="Sign out" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" /></button>
+            <button onClick={() => setWhoOpen(true)} className="flex min-w-0 flex-1 items-center gap-3 text-left" title="Change who is using this device">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500 text-sm font-semibold text-white">{unnamed ? '?' : initials(user.name)}</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-white">{unnamed ? 'Choose your name' : user.name}</div>
+                <div className="text-xs text-slate-400">{unnamed ? 'For signatures' : 'Tap to switch'}</div>
+              </div>
+            </button>
+            <button onClick={signOut} title="Lock the app" className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-white"><LogOut className="h-4 w-4" /></button>
           </div>
         </div>
       </aside>
@@ -124,14 +135,15 @@ export function Shell() {
             <NavLink key={n.label} to={n.to} onClick={() => setMore(false)} className="flex items-center gap-3 rounded-xl px-3 py-3 font-medium text-slate-700 hover:bg-slate-50">{n.icon}{n.label}</NavLink>
           ))}
           <div className="my-2 border-t border-slate-100" />
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-500 text-sm font-semibold text-white">{initials(user.name)}</div>
-            <div className="flex-1"><div className="text-sm font-medium">{user.name}</div><div className="text-xs text-slate-500">{ROLE_LABELS[user.role]} · {user.email}</div></div>
-          </div>
-          <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 font-medium text-rose-600 hover:bg-rose-50"><LogOut className="h-5 w-5" />Sign out</button>
+          <button onClick={() => { setMore(false); setWhoOpen(true); }} className="flex w-full items-center gap-3 px-3 py-2 text-left">
+            <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-500 text-sm font-semibold text-white">{unnamed ? '?' : initials(user.name)}</div>
+            <div className="flex-1"><div className="text-sm font-medium">{unnamed ? 'Choose your name' : user.name}</div><div className="text-xs text-slate-500">Tap to switch person</div></div>
+          </button>
+          <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 font-medium text-rose-600 hover:bg-rose-50"><LogOut className="h-5 w-5" />Lock the app</button>
         </div>
       </Sheet>
 
+      <TeamSheet open={whoOpen || (unnamed && !whoSkipped)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }} onPick={chooseName} title="Who is using this device?" />
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />
     </div>

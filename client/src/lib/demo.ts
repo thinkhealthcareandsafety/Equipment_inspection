@@ -39,12 +39,11 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
   const q = new URLSearchParams(path.split('?')[1] ?? '');
 
   switch (route) {
-    case '/auth/demo-accounts': return s.accounts as T;
     case '/auth/login': {
-      const u = s.users.find((x) => x.email.toLowerCase() === String(body.email ?? '').toLowerCase());
-      if (!u || body.password !== 'Think@2026') throw new DemoError(401, 'Email or password is incorrect');
-      audit('auth.login', 'user', { email: u.email });
-      return { token: 'demo', user: u } as T;
+      if (String(body.code ?? '') !== '9999') throw new DemoError(401, 'That code is not right');
+      const user = { id: '00000000-0000-4000-8000-000000000001', name: 'Team', email: '', role: 'admin', clientId: null, teamMemberId: null };
+      audit('auth.unlock', 'device', {});
+      return { token: '9999', user } as T;
     }
     case '/auth/me': return JSON.parse(localStorage.getItem('think.session') ?? 'null')?.user as T;
     case '/sync/pull': {

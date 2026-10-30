@@ -33,7 +33,7 @@ export function PersonPicker({ value, onChange, disabled, error }: { value: stri
   );
 }
 
-export function TeamSheet({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick?: (name: string) => void }) {
+export function TeamSheet({ open, onClose, onPick, title = 'Inspection team' }: { open: boolean; onClose: () => void; onPick?: (name: string) => void; title?: string }) {
   const team = useTeam();
   const toast = useToast();
   const dialogs = useDialogs();
@@ -51,7 +51,7 @@ export function TeamSheet({ open, onClose, onPick }: { open: boolean; onClose: (
     await removeTeamMember(m); toast(`${m.name} removed`);
   };
   return (
-    <Sheet open={open} onClose={onClose} title="Inspection team">
+    <Sheet open={open} onClose={onClose} title={title}>
       <div className="space-y-5">
         <div className="rounded-2xl bg-slate-50 p-4">
           <div className="mb-3 text-sm font-semibold">Add a person</div>

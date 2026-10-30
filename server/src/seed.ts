@@ -32,28 +32,11 @@ export const TEAM = [
   { name: 'Sumit Shah', email: 'sumit.shah@think-hs.demo', designation: 'Inspector' },
 ];
 
-/** Creates the first administrator from ADMIN_EMAIL / ADMIN_PASSWORD (live deployments). Safe to run on every deploy. */
-export async function ensureAdmin(): Promise<void> {
-  const db = await getDb();
-  const { adminEmail, adminPassword, adminName } = config;
-  if (!adminEmail || !adminPassword) {
-    const n = Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM users WHERE role = 'admin' AND active`)).rows[0].n);
-    if (!n) console.warn('[seed] No administrator exists. Set ADMIN_EMAIL and ADMIN_PASSWORD (min 8 chars) and redeploy to create one.');
-    return;
-  }
-  if (adminPassword.length < 8) throw new Error('ADMIN_PASSWORD must be at least 8 characters');
-  const exists = await db.query('SELECT 1 FROM users WHERE lower(email) = lower($1)', [adminEmail]);
-  if (exists.rows.length) return;
-  await db.query(`INSERT INTO users (id, email, name, role, password_hash) VALUES ($1,$2,$3,'admin',$4)`,
-    [uuid(), adminEmail.trim(), adminName, await bcrypt.hash(adminPassword, 10)]);
-  console.log(`[seed] Administrator created: ${adminEmail}`);
-}
-
 export async function seedIfEmpty(): Promise<boolean> {
   const db = await getDb();
   const live = config.seedMode === 'production';
   const n = Number((await db.query<{ n: string }>('SELECT count(*) AS n FROM clients')).rows[0].n);
-  if (n > 0) { if (live) await ensureAdmin(); return false; }
+  if (n > 0) return false;
   console.log(`[seed] Empty database — seeding templates, inventory and ${live ? 'team (live mode, no demo logins)' : 'demo data'}…`);
   const hash = await bcrypt.hash(config.demoPassword, 10);
 
@@ -70,9 +53,8 @@ export async function seedIfEmpty(): Promise<boolean> {
   console.log(`[seed] Imported ${imported.created} assets across ${imported.sites.length} sites (as of ${imported.asOfDate}).`);
 
   if (live) {
-    // Inspectors appear in the Technician picker straight away; the administrator then gives each a login under Admin → Users.
+    // Inspectors appear in the Technician picker straight away.
     for (const m of TEAM) await db.query('INSERT INTO team_members (id, name, designation) VALUES ($1,$2,$3)', [uuid(), m.name, m.designation]);
-    await ensureAdmin();
     await audit(db, { action: 'seed', entityType: 'system', changes: { assets: imported.created, mode: 'production' } });
     console.log('[seed] Done (live mode).');
     return true;

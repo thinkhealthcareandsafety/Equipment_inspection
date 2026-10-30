@@ -48,7 +48,7 @@ export function Dashboard() {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="text-2xl font-semibold tracking-tight">Hello, {user.name.split(' ')[0]}</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
       <div className="mt-0.5 text-slate-500">{formatDate(todayISO())} · {data.buildings.length} sites · {k.assets} assets</div>
 
       <div className="relative mt-5">

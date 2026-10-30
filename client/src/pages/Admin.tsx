@@ -13,18 +13,17 @@ import { saveFile } from '../lib/files.ts';
 import { IS_DEMO } from '../lib/demo.ts';
 import { Badge, Button, Card, cx, Empty, Field, PageHeader, Segmented, Sheet, useToast } from '../components/ui.tsx';
 
-type Tab = 'import' | 'users' | 'audit' | 'templates';
+type Tab = 'import' | 'audit' | 'templates';
 
 export function Admin() {
   const [tab, setTab] = useState<Tab>('import');
   return (
     <>
-      <PageHeader title="Administration" subtitle="Inventory import, user access, audit trail and checklist templates" />
+      <PageHeader title="Administration" subtitle="Inventory import, audit trail and checklist templates" />
       <div className="mb-5 max-w-xl"><Segmented value={tab} onChange={setTab} options={[
-        { value: 'import', label: 'Import' }, { value: 'users', label: 'Users' }, { value: 'audit', label: 'Audit trail' }, { value: 'templates', label: 'Templates' },
+        { value: 'import', label: 'Import' }, { value: 'audit', label: 'Audit trail' }, { value: 'templates', label: 'Templates' },
       ]} /></div>
       {tab === 'import' && <ImportTab />}
-      {tab === 'users' && <UsersTab />}
       {tab === 'audit' && <AuditTab />}
       {tab === 'templates' && <TemplatesTab />}
     </>
@@ -130,53 +129,6 @@ function ImportTab() {
         </>
       )}
     </div>
-  );
-}
-
-interface UserRow { id: string; email: string; name: string; role: Role; client_id: string | null; active: boolean; created_at: string }
-
-function UsersTab() {
-  const toast = useToast();
-  const clients = useLiveQuery(() => db.clients.toArray(), []) ?? [];
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', role: 'inspector' as Role, clientId: '', password: '' });
-  const load = () => api<UserRow[]>('/users').then(setUsers).catch((e) => toast(e.message, 'err'));
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return (
-    <>
-      <div className="mb-3 flex justify-end"><Button variant="primary" icon={<UserPlus className="h-4 w-4" />} onClick={() => setOpen(true)}>Add user</Button></div>
-      <Card className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead><tr className="border-b border-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-500"><th className="px-5 py-3">Name</th><th className="px-3 py-3">Role</th><th className="px-3 py-3">Client scope</th><th className="px-3 py-3">Status</th><th /></tr></thead>
-          <tbody className="divide-y divide-slate-100">
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td className="px-5 py-3"><div className="font-medium">{u.name}</div><div className="text-xs text-slate-500">{u.email}</div></td>
-                <td className="px-3 py-3"><Badge tone={u.role === 'client_admin' ? 'violet' : u.role === 'admin' ? 'slate' : 'brand'}>{ROLE_LABELS[u.role]}</Badge></td>
-                <td className="px-3 py-3 text-slate-600">{u.role === 'client_admin' ? clients.find((c) => c.id === u.client_id)?.name ?? '—' : 'All clients'}</td>
-                <td className="px-3 py-3">{u.active ? <Badge tone="green">Active</Badge> : <Badge>Disabled</Badge>}</td>
-                <td className="px-3 py-3 text-right"><Button size="sm" variant="ghost" onClick={async () => { await api(`/users/${u.id}`, { method: 'PATCH', json: { active: !u.active } }).catch((e) => toast(e.message, 'err')); void load(); }}>{u.active ? 'Disable' : 'Enable'}</Button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
-      <p className="mt-3 text-sm text-slate-500">Client admins see only their own organisation's sites, assets, reports and certificates, read-only. Inspectors and reviewers are added to the inspection team automatically.</p>
-      <Sheet open={open} onClose={() => setOpen(false)} title="Add user" footer={<Button variant="primary" className="flex-1" onClick={async () => {
-        try { await api('/users', { method: 'POST', json: { ...form, clientId: form.role === 'client_admin' ? form.clientId : null } }); toast('User created'); setOpen(false); void load(); await syncNow(); }
-        catch (e) { toast((e as Error).message, 'err'); }
-      }}>Create user</Button>}>
-        <div className="grid gap-4">
-          <Field label="Full name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Email"><input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></Field>
-          <Field label="Role"><select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as Role })}>{Object.entries(ROLE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-          {form.role === 'client_admin' && <Field label="Client"><select className="input" value={form.clientId} onChange={(e) => setForm({ ...form, clientId: e.target.value })}><option value="">Choose…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>}
-          <Field label="Temporary password" hint="At least 8 characters"><input className="input" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></Field>
-        </div>
-      </Sheet>
-    </>
   );
 }
 

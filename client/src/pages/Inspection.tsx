@@ -33,7 +33,8 @@ const STATUS_STYLE: Record<CheckStatus, string> = {
   RECT: 'bg-amber-500 text-white ring-amber-500',
 };
 
-const SIG_KEY = (userId: string) => `think.signature.${userId}`;
+/** Remembered per person (not per device account), so people sharing a phone never reuse each other's signature. */
+const SIG_KEY = (who: string) => `think.signature.${who}`;
 const loadSig = (userId: string) => { try { return localStorage.getItem(SIG_KEY(userId)); } catch { return null; } };
 const storeSig = (userId: string, url: string) => { try { localStorage.setItem(SIG_KEY(userId), url); } catch { /* storage blocked */ } };
 
@@ -128,7 +129,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
   };
 
   const submit = async (dataUrl: string, remember: boolean) => {
-    if (remember) storeSig(user.id, dataUrl);
+    if (remember) storeSig(h.technician || user.name, dataUrl);
     const sig = { name: h.technician || user.name, userId: user.id, dataUrl, signedAt: new Date().toISOString() };
     const errs = blocking(validateInspection(t, { ...insp, technicianSignature: sig }, true));
     if (errs.length) { setSignOpen(false); jumpToFirstError(); return; }
@@ -279,7 +280,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
         </div>
       )}
 
-      <SignSheet open={signOpen} onClose={() => setSignOpen(false)} name={h.technician || user.name} savedSig={loadSig(user.id)} onSign={submit} />
+      <SignSheet open={signOpen} onClose={() => setSignOpen(false)} name={h.technician || user.name} savedSig={loadSig(h.technician || user.name)} onSign={submit} />
 
       <Sheet open={!!done} onClose={() => setDone(null)} title="Submitted">
         <div className="space-y-4">
@@ -432,9 +433,9 @@ function ReviewPanel({ insp }: { insp: Inspection }) {
   const toast = useToast();
   const [mode, setMode] = useState<'approve' | 'return' | null>(null);
   const [comment, setComment] = useState('');
-  const saved = loadSig(user.id);
+  const saved = loadSig(user.name);
   const approve = async (dataUrl: string) => {
-    storeSig(user.id, dataUrl);
+    storeSig(user.name, dataUrl);
     await reviewInspection(insp, user, { finalize: true, signature: { name: user.name, userId: user.id, dataUrl, signedAt: new Date().toISOString() } });
     setMode(null); toast('Approved and locked');
   };

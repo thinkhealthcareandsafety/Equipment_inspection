@@ -1,37 +1,27 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import multer from 'multer';
 import { z } from 'zod';
 import { slugCode, uuid, type Role } from '@think/shared';
 import { audit, getDb } from '../db.ts';
-import { requireAuth, requireRole, scope, signToken, type AuthUser } from '../lib/auth.ts';
+import { codeMatches, requireAuth, requireRole, scope, teamUser } from '../lib/auth.ts';
 import { commitInventory, previewInventory } from '../services/inventory.ts';
 import { runReminders } from '../services/reminders.ts';
 
 export const api = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-const toUser = (r: any): AuthUser => ({ id: r.id, name: r.name, email: r.email, role: r.role, clientId: r.client_id, teamMemberId: r.team_member_id });
-
 // ---------- auth ----------
 api.post('/auth/login', async (req, res) => {
-  const { email, password } = req.body ?? {};
-  const db = await getDb();
-  const r = (await db.query('SELECT * FROM users WHERE lower(email) = lower($1) AND active', [String(email ?? '')])).rows[0];
-  if (!r || !(await bcrypt.compare(String(password ?? ''), r.password_hash as string))) {
-    await audit(db, { action: 'auth.failed', entityType: 'user', changes: { email } });
-    return res.status(401).json({ error: 'Email or password is incorrect' });
+  if (!codeMatches(req.body?.code)) {
+    await sleep(600); // slows down guessing
+    return res.status(401).json({ error: 'That code is not right' });
   }
-  const user = toUser(r);
-  await audit(db, { user, action: 'auth.login', entityType: 'user', entityId: user.id, clientId: user.clientId });
-  res.json({ token: signToken(user), user });
-});
-
-api.get('/auth/demo-accounts', async (_req, res) => {
+  const user = teamUser(req.body?.name);
   const db = await getDb();
-  const r = await db.query(`SELECT email, name, role FROM users WHERE active AND email LIKE '%.demo' ORDER BY
-    CASE role WHEN 'inspector' THEN 1 WHEN 'reviewer' THEN 2 WHEN 'client_admin' THEN 3 ELSE 4 END, name`);
-  res.json(r.rows);
+  await audit(db, { user, action: 'auth.unlock', entityType: 'device', changes: { name: user.name } });
+  res.json({ token: String(req.body.code), user });
 });
 
 api.use(requireAuth);

@@ -5,19 +5,17 @@ Digital, offline-first replacement for the paper **Equipment-Specific Checklists
 ## Deploy on Vercel (full app, shared by the whole team)
 
 1. **Import** this repository at https://vercel.com/new. Set **Application Preset** to **Other**; the build settings come from `vercel.json`.
-2. In the project's **Storage** tab, add a **Neon (Postgres)** database and connect it to the project. This creates `DATABASE_URL` automatically.
-3. Add these under **Settings → Environment Variables**:
+2. In the project's **Storage** tab, add a **Neon (Postgres)** database and connect it to the project. This creates `DATABASE_URL` automatically. This is the only required setting.
+3. **Deploy** (or **Redeploy** if you already deployed). The build creates the tables and loads the 331-unit FLS inventory and the three inspectors the first time. Re-deploying never duplicates data.
+4. Open the web address. The app asks for the **access code (`9999`)**, then asks who is using the device.
 
-| Name | Value |
+Optional settings under **Settings → Environment Variables**:
+
+| Name | Purpose |
 |---|---|
-| `JWT_SECRET` | a long random string (required) |
-| `ADMIN_EMAIL` | the first administrator's login email |
-| `ADMIN_PASSWORD` | at least 8 characters; change it after signing in |
-| `CRON_SECRET` | a random string; enables the daily reminder job |
-| `SMTP_URL`, `MAIL_FROM` | optional, to email reminders |
-
-4. **Redeploy.** The build creates the database tables, loads the 331-unit FLS inventory the first time, adds the three inspectors to the Technician list, and creates the administrator. Re-deploying never duplicates data.
-5. Sign in as the administrator, then use **Admin → Users** to give each inspector, reviewer and client admin a login.
+| `ACCESS_CODE` | change the shared password from `9999` |
+| `CRON_SECRET` | any random text; turns on the daily reminder job |
+| `SMTP_URL`, `MAIL_FROM` | email the reminders |
 
 The browser-only demo (no server, no database) is still available with `npm run build:demo`.
 
@@ -43,14 +41,7 @@ npm run build
 npm start
 ```
 
-Open **http://localhost:4000**. On first start the server creates its own database, imports `FLS Equipment - INDIA.xlsx` (331 units, 22 sites, 7 cities) and creates demo logins. Click any demo account on the sign-in page. The password for every demo account is `Think@2026`.
-
-| Login | Role |
-|---|---|
-| ashish.dalal@think-hs.demo, shikha.dixit@think-hs.demo, sumit.shah@think-hs.demo | Inspector |
-| reviewer@think-hs.demo | Reviewer |
-| jll.admin@jll.demo | Client admin (JLL only, read-only) |
-| admin@think-hs.demo | Administrator (import, users, audit, templates) |
+Open **http://localhost:4000**. On first start the server creates its own database and imports `FLS Equipment - INDIA.xlsx` (331 units, 22 sites, 7 cities). The app asks for the access code, which is **9999**, then asks who is using the device. Locally it also loads the two paper-sample inspections.
 
 To use it from a phone on the same Wi-Fi, open `http://<your-computer's-IP>:4000`. To install it as an app, choose **Add to Home Screen**. For live development with hot reload, run `npm run dev` and open http://localhost:5173.
 
@@ -63,7 +54,7 @@ npm run seed -- --reset
 ### Production
 
 - Set `DATABASE_URL` to a PostgreSQL database. Without it, the app uses an embedded PostgreSQL (PGlite) stored in `server/.data/`.
-- Set `JWT_SECRET` to a long random string. This is required when `NODE_ENV=production`.
+- Set `ACCESS_CODE` to change the shared password (default `9999`).
 - Set `SMTP_URL` (for example `smtps://user:pass@smtp.zoho.in:465`) and `MAIL_FROM` to turn on the daily reminder emails. Reminders run at `REMINDER_CRON` (default `30 8 * * *`, Asia/Kolkata).
 - Serve over HTTPS. The camera and offline install need a secure origin.
 
