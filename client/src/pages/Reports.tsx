@@ -98,7 +98,7 @@ export function Reports() {
     <>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-[28px]">Reports</h1>
+          <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">Reports</h1>
           <div className="mt-1 flex flex-wrap items-center gap-1 text-[15px]">
             <button className={cx(city ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ city: '', buildingId: '', floorId: '' })}>All sites</button>
             {city && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(buildingId ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ buildingId: '', floorId: '' })}>{city}</button></>}
@@ -221,7 +221,7 @@ function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNod
   return (
     <Card className="p-4">
       <div className="text-[13px] text-slate-500">{label}</div>
-      <div className={cx('mt-1 text-[26px] font-semibold leading-tight tabular', tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{value}</div>
+      <div className={cx('mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] tabular', tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{value}</div>
       <div className="mt-0.5 truncate text-xs text-slate-500">{sub}</div>
     </Card>
   );

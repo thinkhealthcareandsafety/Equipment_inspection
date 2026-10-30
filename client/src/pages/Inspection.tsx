@@ -24,7 +24,7 @@ import { describeEvent } from '../lib/pdf.ts';
 import { PaperView } from '../components/PaperView.tsx';
 import { FloorsSheet } from '../components/FloorTools.tsx';
 import { PersonPicker, PhotoStrip, SignaturePad } from '../components/Inputs.tsx';
-import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
+import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, haptic, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
 
 const STATUS_STYLE: Record<CheckStatus, string> = {
   P: 'bg-emerald-600 text-white ring-emerald-600',
@@ -151,7 +151,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
   return (
     <div className="mx-auto max-w-3xl">
       {/* Top bar */}
-      <div className="sticky top-14 z-10 -mx-4 mb-4 border-b border-slate-200/70 bg-canvas/95 px-4 py-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
+      <div className="material-canvas sticky top-14 z-10 -mx-4 mb-4 border-b-[0.5px] border-black/10 px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10">
         <div className="flex items-center gap-2">
           <button onClick={() => nav(-1)} className="rounded-xl p-2 text-slate-500 hover:bg-white" aria-label="Back"><ChevronLeft className="h-5 w-5" /></button>
           <div className="min-w-0 flex-1">
@@ -225,10 +225,10 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
 
           {/* Checks */}
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
+            <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-black/10 px-4 py-3 sm:px-5">
               <div>
-                <div className="font-semibold">Checks</div>
-                <div className="text-xs text-slate-500">P Pass · F Fail · M Maintenance</div>
+                <div className="text-[19px] font-bold tracking-[-0.02em]">Checks</div>
+                <div className="text-[13px] text-slate-500">P Pass · F Fail · M Maintenance</div>
               </div>
               <Button size="sm" variant="dark" icon={<Check className="h-4 w-4" />} disabled={answered === t.checks.length} onClick={allPass}>All P</Button>
             </div>
@@ -290,7 +290,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
 
       {/* One action at the bottom */}
       {editable && !paper && (
-        <div className="fixed inset-x-0 bottom-16 z-20 px-4 lg:bottom-0 lg:pl-[264px]">
+        <div className="fixed inset-x-0 bottom-16 z-20 bg-gradient-to-t from-canvas via-canvas/85 to-transparent px-4 pt-8 lg:bottom-0 lg:pl-[264px]">
           <div className="safe-bottom mx-auto max-w-3xl pb-2 pt-2 lg:pb-5">
             {errors.length > 0
               ? <Button size="lg" variant="dark" className="w-full shadow-lift" onClick={jumpToFirstError}>{errors.length} item{errors.length > 1 ? 's' : ''} left — show next<ArrowRight className="h-4 w-4" /></Button>
@@ -344,9 +344,9 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
   const [more, setMore] = useState(e.status === 'NA' || e.status === 'RECT');
   const needsRemark = e.status === 'F' || e.status === 'M' || e.status === 'RECT';
   const btn = (s: CheckStatus, disabled = false) => (
-    <button key={s} type="button" disabled={disabled} onClick={() => onSet({ status: s })} title={STATUS_LABELS[s]}
-      className={cx('h-11 min-w-11 flex-1 rounded-xl px-2 text-[15px] font-bold ring-1 ring-inset transition active:scale-95 disabled:opacity-30',
-        e.status === s ? STATUS_STYLE[s] : 'bg-white text-slate-600 ring-slate-200 hover:ring-slate-300')}>{s}</button>
+    <button key={s} type="button" disabled={disabled} onClick={() => { haptic(); onSet({ status: s }); }} title={STATUS_LABELS[s]}
+      className={cx('h-[46px] min-w-11 flex-1 rounded-[12px] px-2 text-[17px] font-semibold transition duration-150 active:scale-95 disabled:opacity-30',
+        e.status === s ? STATUS_STYLE[s] : 'bg-black/[.05] text-slate-700 hover:bg-black/[.08]')}>{s}</button>
   );
   return (
     <div id={`chk-${item.no}`} className={cx('px-4 py-3 sm:px-5', e.status === 'F' && 'bg-rose-50/60', statusError && 'bg-rose-50')}>
@@ -361,7 +361,7 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
         <div className="flex gap-1.5 pl-8 sm:w-64 sm:pl-0">
           {btn('P')}{btn('F')}{btn('M')}
           {more ? <>{btn('NA', !item.allowNA)}{btn('RECT')}</> : (
-            <button type="button" onClick={() => setMore(true)} className="h-11 w-11 shrink-0 rounded-xl text-slate-400 ring-1 ring-inset ring-slate-200 hover:text-slate-700" title="NA / RECT">
+            <button type="button" onClick={() => setMore(true)} className="h-[46px] w-11 shrink-0 rounded-[12px] bg-black/[.05] text-slate-500 hover:bg-black/[.08] active:scale-95" title="NA / RECT">
               <Ellipsis className="mx-auto h-5 w-5" />
             </button>
           )}

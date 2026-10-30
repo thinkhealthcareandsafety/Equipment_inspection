@@ -6,7 +6,7 @@ import { dueState, EQUIPMENT_LABELS, formatDate, type Asset, type EquipmentType 
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
 import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from '../lib/store.ts';
-import { AssetStatusBadge, Badge, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, Field, PageHeader, Sheet, useToast } from '../components/ui.tsx';
+import { AssetStatusBadge, Badge, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, Field, PageHeader, SearchField, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
 import { FloorsSheet } from '../components/FloorTools.tsx';
 import { useDialogs } from '../components/Dialogs.tsx';
@@ -131,10 +131,7 @@ export function BuildingPage() {
 
       {/* Filters: search + one row of chips */}
       <div className="mb-3 flex gap-2">
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input id="site-search" className="input pl-10" placeholder="Asset ID, make, serial" value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
+        <SearchField id="site-search" className="flex-1 sm:max-w-xs" placeholder="Asset ID, make, serial" value={q} onChange={setQ} />
         {staff && <Button variant={selecting ? 'dark' : 'secondary'} className="h-[46px]" icon={<SquareCheck className="h-4 w-4" />}
           onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</Button>}
       </div>
@@ -155,10 +152,10 @@ export function BuildingPage() {
                 <Link to={`/assets/${a.id}`} className="flex min-w-0 flex-1 items-center gap-3" onClick={(e) => { if (selecting) { e.preventDefault(); toggle(a.id); } }}>
                   <EquipmentAvatar type={a.equipmentType} tone={a.status === 'out_of_service' ? 'red' : a.status === 'retest_required' ? 'amber' : 'default'} />
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 font-medium">{a.assetTag}
+                    <div className="flex flex-wrap items-center gap-x-2 text-[17px] font-semibold tracking-[-0.01em]">{a.assetTag}
                       {a.status !== 'in_service' && <AssetStatusBadge status={a.status} />}
                     </div>
-                    <div className="truncate text-sm text-slate-500">
+                    <div className="truncate text-[14px] text-slate-500">
                       {EQUIPMENT_LABELS[a.equipmentType]} · {a.manufacturer ?? (a.candidateMakes.length ? a.candidateMakes.join(' / ') : 'Make not recorded')}
                       {(floorName(a.floorId) || locName(a.locationId)) && ` · ${[floorName(a.floorId), locName(a.locationId)].filter(Boolean).join(', ')}`}
                     </div>
