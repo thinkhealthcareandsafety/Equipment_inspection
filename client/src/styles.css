@@ -1,0 +1,47 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+@theme {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --color-canvas: #f6f6f3;
+  --color-ink-950: #0b1b2b;
+  --color-ink-900: #12263b;
+  --color-ink-800: #1d3550;
+  --color-ink-700: #2d4763;
+  --color-brand-50: #ebf8f5;
+  --color-brand-100: #cdeee6;
+  --color-brand-200: #9edccd;
+  --color-brand-400: #3dbfa5;
+  --color-brand-500: #13a38b;
+  --color-brand-600: #0e8b76;
+  --color-brand-700: #0c6f5f;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+  --shadow-lift: 0 10px 30px -12px rgb(16 24 40 / 0.25);
+}
+
+@layer base {
+  html { -webkit-tap-highlight-color: transparent; }
+  body { @apply bg-canvas text-slate-900 antialiased; font-feature-settings: 'cv11', 'ss01'; }
+  input, select, textarea, button { font: inherit; }
+  :focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[15px] text-slate-900 shadow-sm
+      placeholder:text-slate-400 transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 focus:outline-none
+      disabled:bg-slate-50 disabled:text-slate-500;
+  }
+  .input-error { @apply border-rose-400 ring-4 ring-rose-500/10; }
+  .label { @apply mb-1.5 block text-[13px] font-medium text-slate-600; }
+  .card { @apply rounded-2xl border border-slate-200/80 bg-white shadow-card; }
+  .tabular { font-variant-numeric: tabular-nums; }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0.5rem); }
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise 0.25s ease-out backwards; } /* 'backwards' so no transform remains: a transformed ancestor would trap position:fixed children */
+@keyframes sheet { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.animate-sheet { animation: sheet 0.22s cubic-bezier(.2,.8,.2,1) both; }
