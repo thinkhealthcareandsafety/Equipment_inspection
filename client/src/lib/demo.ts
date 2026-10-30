@@ -51,7 +51,10 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
         return { cursor: s.pull.cursor, hasMore: false, full: false, clients: [], buildings: [], floors: [], locations: [], assets: [], inspections: [],
           photos: [], templates: [], team: [], notifications: [] } as T;
       }
-      return { ...structuredClone(s.pull), hasMore: false } as T;
+      const pull = structuredClone(s.pull) as any;
+      for (const a of pull.assets) if (a.equipmentType === 'generic_stretcher') a.equipmentType = 'folding_stretcher'; // older snapshot
+      pull.templates = pull.templates.filter((t: any) => t.id !== 'generic_stretcher');
+      return { ...pull, hasMore: false } as T;
     }
     case '/sync/push': {
       const results = [];

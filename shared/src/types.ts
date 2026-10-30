@@ -1,19 +1,17 @@
 // Core domain types shared by the API server and the offline-first client.
 
-export type EquipmentType = 'wheelchair' | 'scoop_stretcher' | 'folding_stretcher' | 'generic_stretcher';
+export type EquipmentType = 'wheelchair' | 'scoop_stretcher' | 'folding_stretcher';
 
 export const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   wheelchair: 'Wheelchair',
   scoop_stretcher: 'Scoop Stretcher',
   folding_stretcher: 'Foldable Stretcher',
-  generic_stretcher: 'Stretcher',
 };
 
 export const EQUIPMENT_CODES: Record<EquipmentType, string> = {
   wheelchair: 'WC',
   scoop_stretcher: 'SS',
   folding_stretcher: 'FS',
-  generic_stretcher: 'ST',
 };
 
 export type Role = 'admin' | 'inspector' | 'reviewer' | 'client_admin';

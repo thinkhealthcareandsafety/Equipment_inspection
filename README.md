@@ -1,6 +1,6 @@
 # Think Inspect — Think Healthcare and Safety
 
-Digital, offline-first replacement for the paper **Equipment-Specific Checklists** and **Master Inspection & Fitness Certificate** for wheelchairs, scoop stretchers, foldable stretchers and stretchers.
+Digital, offline-first replacement for the paper **Equipment-Specific Checklists** and **Master Inspection & Fitness Certificate** for wheelchairs, scoop stretchers and foldable stretchers.
 
 ## Deploy on Vercel (full app, shared by the whole team)
 

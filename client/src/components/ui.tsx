@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { createContext, useCallback, useContext, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronLeft, X, Accessibility, BedSingle, Layers, Stethoscope } from 'lucide-react';
+import { ChevronLeft, X, Accessibility, BedSingle, Layers } from 'lucide-react';
 import {
   dueState, relativeDue, type AssetStatus, type EquipmentType, type InspectionStatus,
 } from '@think/shared';
@@ -81,7 +81,7 @@ export function InspectionStatusBadge({ status }: { status: InspectionStatus }) 
 }
 
 export function EquipmentIcon({ type, className = 'h-5 w-5' }: { type: EquipmentType; className?: string }) {
-  const I = type === 'wheelchair' ? Accessibility : type === 'scoop_stretcher' ? Layers : type === 'folding_stretcher' ? BedSingle : Stethoscope;
+  const I = type === 'wheelchair' ? Accessibility : type === 'scoop_stretcher' ? Layers : BedSingle;
   return <I className={className} strokeWidth={1.8} />;
 }
 

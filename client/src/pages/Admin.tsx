@@ -167,7 +167,8 @@ function AuditTab() {
 
 function TemplatesTab() {
   const stored = useLiveQuery(() => db.templates.toArray(), []) ?? [];
-  const templates: ChecklistTemplate[] = stored.length ? stored : Object.values(DEFAULT_TEMPLATES);
+  const known = new Set(Object.keys(DEFAULT_TEMPLATES)); // ignore templates of products that no longer exist
+  const templates: ChecklistTemplate[] = stored.length ? stored.filter((t) => known.has(t.id)) : Object.values(DEFAULT_TEMPLATES);
   return (
     <div className="grid gap-5 lg:grid-cols-2">
       {templates.map((t) => (

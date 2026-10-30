@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS assets (
   building_id uuid NOT NULL REFERENCES buildings(id),
   floor_id uuid REFERENCES floors(id),
   location_id uuid REFERENCES locations(id),
-  equipment_type text NOT NULL CHECK (equipment_type IN ('wheelchair','scoop_stretcher','folding_stretcher','generic_stretcher')),
+  equipment_type text NOT NULL CHECK (equipment_type IN ('wheelchair','scoop_stretcher','folding_stretcher')),
   asset_tag text NOT NULL,
   serial_number text, manufacturer text, model text,
   candidate_makes jsonb NOT NULL DEFAULT '[]',
@@ -176,7 +176,33 @@ CREATE TABLE IF NOT EXISTS sync_ops (
 `;
 
 async function migrate(q: Queryable) {
-  for (const stmt of SCHEMA.split(';').map((s) => s.trim()).filter(Boolean)) await q.query(stmt);
+  for (const stmt of SCHEMA.split(';').map((x) => x.trim()).filter(Boolean)) await q.query(stmt);
+  await retireGenericStretcher(q);
+}
+
+/**
+ * There are three products. Earlier builds had a fourth, a plain "Stretcher". Move those units to Foldable
+ * Stretcher (flagged as inferred) and, where nothing has been inspected yet, renumber their asset IDs to match.
+ * Safe to run repeatedly.
+ */
+async function retireGenericStretcher(q: Queryable) {
+  await q.query(`DELETE FROM templates WHERE id = 'generic_stretcher'`);
+  const legacy = (await q.query<{ id: string; building_id: string; asset_tag: string; data_flags: string[] }>(
+    `SELECT id, building_id, asset_tag, data_flags FROM assets WHERE equipment_type = 'generic_stretcher' ORDER BY building_id, asset_tag`)).rows;
+  if (!legacy.length) return;
+  const next = new Map<string, number>();
+  for (const a of legacy) {
+    if (!next.has(a.building_id)) {
+      const tags = (await q.query<{ asset_tag: string }>(`SELECT asset_tag FROM assets WHERE building_id = $1 AND equipment_type = 'folding_stretcher'`, [a.building_id])).rows;
+      next.set(a.building_id, Math.max(0, ...tags.map((t) => Number(t.asset_tag.match(/-(\d+)$/)?.[1] ?? 0))));
+    }
+    const inspected = (await q.query(`SELECT 1 FROM inspections WHERE asset_id = $1 LIMIT 1`, [a.id])).rows.length > 0;
+    let tag = a.asset_tag;
+    if (!inspected && /-ST-\d+$/.test(tag)) { const n = (next.get(a.building_id) ?? 0) + 1; next.set(a.building_id, n); tag = tag.replace(/-ST-\d+$/, `-FS-${String(n).padStart(3, '0')}`); }
+    const flags = [...new Set([...(a.data_flags ?? []), 'TYPE_INFERRED'])];
+    await q.query(`UPDATE assets SET equipment_type = 'folding_stretcher', asset_tag = $2, data_flags = $3, updated_at = now(), seq = nextval('change_seq') WHERE id = $1`,
+      [a.id, tag, JSON.stringify(flags)]);
+  }
 }
 
 export async function audit(q: Queryable, e: {

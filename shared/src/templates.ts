@@ -118,8 +118,8 @@ const scoop: ChecklistTemplate = {
   ],
 };
 
-// No paper form was supplied for the next two types. They follow the same 10-item
-// structure and wording style and are marked 'drafted' until the client confirms them.
+// No paper form was supplied for the foldable stretcher. It follows the same 10-item
+// structure and wording style and is marked 'drafted' until the client confirms it.
 const folding: ChecklistTemplate = {
   id: 'folding_stretcher',
   version: 1,
@@ -143,34 +143,10 @@ const folding: ChecklistTemplate = {
   ],
 };
 
-const generic: ChecklistTemplate = {
-  id: 'generic_stretcher',
-  version: 1,
-  title: 'STRETCHER — EQUIPMENT-SPECIFIC CHECKLIST',
-  shortName: 'Stretcher',
-  subtitle: FORM_SUBTITLE,
-  provenance: 'drafted',
-  intervalDays: 90,
-  retestWithinDays: 7,
-  checks: [
-    { no: 1, label: 'Frame and structure inspected for cracks, bending and deformation', safetyCritical: true, allowNA: false },
-    { no: 2, label: 'Patient platform, mattress and covers', safetyCritical: false, allowNA: false },
-    { no: 3, label: 'Handles, handgrips and lifting points', safetyCritical: false, allowNA: false },
-    { no: 4, label: 'Wheels, castors and brakes, where fitted', safetyCritical: true, allowNA: true },
-    { no: 5, label: 'Side rails / guards and their latches, where fitted', safetyCritical: false, allowNA: true },
-    { no: 6, label: 'Patient restraints and anchor points', safetyCritical: true, allowNA: false },
-    { no: 7, label: 'Adjustment mechanisms (backrest, height, leg section), where applicable', safetyCritical: false, allowNA: true },
-    { no: 8, label: 'Stability during normal use and patient transfer', safetyCritical: false, allowNA: false },
-    { no: 9, label: 'Labels, load rating and identification legible', safetyCritical: false, allowNA: false },
-    { no: 10, label: 'Functional test completed as per manufacturer instructions', safetyCritical: false, allowNA: false },
-  ],
-};
-
 export const DEFAULT_TEMPLATES: Record<EquipmentType, ChecklistTemplate> = {
   wheelchair,
   scoop_stretcher: scoop,
   folding_stretcher: folding,
-  generic_stretcher: generic,
 };
 
 export const FUNCTIONAL_TEST_LABELS = {

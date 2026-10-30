@@ -29,5 +29,9 @@ test('imports every unit from the FLS inventory', async () => {
   assert.equal(gift[0].city, 'Gandhinagar');
   const cities = new Set(res.units.map((u) => u.city));
   assert.deepEqual([...cities].sort(), ['Bengaluru', 'Delhi', 'Gandhinagar', 'Hyderabad', 'Mumbai', 'Noida', 'Pune']);
-  console.log(res.issues);
+  assert.deepEqual([...new Set(res.units.map((u) => u.equipmentType))].sort(), ['folding_stretcher', 'scoop_stretcher', 'wheelchair']);
+  assert.equal(res.units.filter((u) => u.equipmentType === 'folding_stretcher' && u.site === 'Magma').length, 23); // "Stretcher - 23" is read as foldable
+  assert.equal(res.units.filter((u) => u.equipmentType === 'folding_stretcher').length, 61);
+  assert.equal(res.units.filter((u) => u.equipmentType === 'scoop_stretcher').length, 132);
+  assert.equal(res.units.filter((u) => u.equipmentType === 'wheelchair').length, 138);
 });

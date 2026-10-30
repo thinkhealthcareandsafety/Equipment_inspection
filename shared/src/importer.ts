@@ -168,7 +168,8 @@ export function classifyType(details: string, typeText: string): { type: Equipme
   if (/cloth/.test(t) || (!t && /cloth/.test(d))) return { type: 'folding_stretcher', inferred: true };
   if (/fold/.test(t)) return { type: 'folding_stretcher', inferred: false };
   if (/wheel\s*chair/.test(d)) return { type: 'wheelchair', inferred: false };
-  return { type: 'generic_stretcher', inferred: !/stretcher/.test(t) };
+  // Only three products exist (wheelchair, scoop, foldable). A plain "Stretcher" / "NA" is taken to be the foldable one, and flagged.
+  return { type: 'folding_stretcher', inferred: !/fold/.test(t) };
 }
 
 // ----- ageing -------------------------------------------------------------

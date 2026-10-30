@@ -21,7 +21,7 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
               <td className="border border-slate-500 px-2 py-1">
                 {f.kind === 'equipmentType' ? (
                   <span className="flex flex-wrap gap-x-4 gap-y-1">
-                    {(['wheelchair', 'scoop_stretcher', 'folding_stretcher', 'generic_stretcher'] as EquipmentType[]).map((t) => <Box key={t} on={insp.header.equipmentType === t}>{EQUIPMENT_LABELS[t]}</Box>)}
+                    {(['wheelchair', 'scoop_stretcher', 'folding_stretcher'] as EquipmentType[]).map((t) => <Box key={t} on={insp.header.equipmentType === t}>{EQUIPMENT_LABELS[t]}</Box>)}
                   </span>
                 ) : f.kind === 'date' ? formatDate(insp.header[f.key] as string) : String(insp.header[f.key] ?? '')}
               </td>

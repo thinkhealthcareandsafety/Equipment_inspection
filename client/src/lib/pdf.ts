@@ -218,7 +218,7 @@ function drawChecklist(doc: jsPDF, insp: Inspection, ctx: PackContext) {
       kvRow(doc, MX, y, lw, vw, f.label, '', rh);
       doc.setFontSize(8.5);
       let x = MX + lw + 2;
-      for (const type of ['wheelchair', 'scoop_stretcher', 'folding_stretcher', 'generic_stretcher'] as EquipmentType[]) {
+      for (const type of ['wheelchair', 'scoop_stretcher', 'folding_stretcher'] as EquipmentType[]) {
         x = checkbox(doc, x, y + rh / 2 + 1.3, insp.header.equipmentType === type, EQUIPMENT_LABELS[type], 2.8) - 2;
       }
     } else {
