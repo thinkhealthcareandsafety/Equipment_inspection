@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router';
 import { ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
 import { EQUIPMENT_LABELS, formatDate, relativeDue, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
-import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
+import { buildReport, download, EMPTY_FILTERS, periodLabel, roundText, roundTone, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
 import { saveFile } from '../lib/files.ts';
 import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, InspectionStatusBadge, useToast } from '../components/ui.tsx';
@@ -130,7 +130,7 @@ export function Reports() {
       {/* Four numbers that matter */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Assets" value={k.assets} sub={place} />
-        <Kpi label="Inspection in date" value={`${k.compliance}%`} sub={`${k.overdue + k.never} need inspecting`} tone={k.compliance >= 90 ? 'green' : k.compliance >= 60 ? 'amber' : 'red'} />
+        <Kpi label="Round progress" value={k.inDate === 0 ? '—' : `${Math.round(k.compliance)}%`} sub={roundText(k)} tone={roundTone(k) === 'neutral' ? undefined : roundTone(k) === 'red' ? 'red' : 'green'} />
         <Kpi label={`Inspected · ${PERIOD_SHORT[period].toLowerCase()}`} value={k.inspectedInPeriod} sub={k.passRate == null ? 'No inspections yet' : `${k.passRate}% passed first time`} />
         <Kpi label="Open defects" value={k.openDefects} sub={`${k.outOfService} out of service`} tone={k.openDefects ? 'red' : 'green'} />
       </div>
@@ -154,7 +154,7 @@ export function Reports() {
                 <th className="hidden px-3 py-3 text-right sm:table-cell">Inspected</th>
                 <th className="px-3 py-3 text-right">Defects</th>
                 <th className="hidden px-3 py-3 text-right sm:table-cell">Overdue</th>
-                <th className="w-36 px-4 py-3 sm:w-48 sm:px-5">In date</th>
+                <th className="w-36 px-4 py-3 sm:w-48 sm:px-5">Inspected</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {report.groups.map((g) => {
@@ -166,7 +166,7 @@ export function Reports() {
                       <td className="hidden px-3 py-3 text-right tabular sm:table-cell">{g.inspected}</td>
                       <td className={cx('px-3 py-3 text-right tabular', g.openDefects > 0 && 'font-semibold text-rose-600')}>{g.openDefects}</td>
                       <td className={cx('hidden px-3 py-3 text-right tabular sm:table-cell', g.overdue > 0 && 'font-semibold text-rose-600')}>{g.overdue}</td>
-                      <td className="px-4 py-3 sm:px-5"><div className="flex items-center gap-2"><Bar value={g.compliance} /><span className="w-10 text-right text-xs tabular text-slate-500">{Math.round(g.compliance)}%</span></div></td>
+                      <td className="px-4 py-3 sm:px-5"><div className="flex items-center gap-2"><Bar value={g.compliance} tone="brand" /><span className="w-14 text-right text-xs tabular text-slate-500">{g.inDate}/{g.assets}</span></div></td>
                     </tr>
                   );
                 })}
@@ -212,7 +212,7 @@ export function Reports() {
           </ul>
         ))}
       </Card>
-      <p className="mt-3 text-xs text-slate-500">{periodLabel(period)}. "In date" means inspected within the 90-day cycle. PDF gives the full report for {place}; Excel exports the list on screen.</p>
+      <p className="mt-3 text-xs text-slate-500">{periodLabel(period)}. "Inspected" means checked within the current 90-day cycle. PDF gives the full report for {place}; Excel exports the list on screen.</p>
     </>
   );
 }

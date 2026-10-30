@@ -77,6 +77,17 @@ export function TeamSheet({ open, onClose, onPick, title = 'Inspection team' }: 
   );
 }
 
+/** Re-draws the signature at a fixed small size so each record carries a few KB, not a full-resolution screenshot. */
+function exportSignature(src: HTMLCanvasElement): string {
+  const w = 360, h = Math.round((src.height / src.width) * w);
+  const out = document.createElement('canvas');
+  out.width = w; out.height = h;
+  const ctx = out.getContext('2d')!;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return out.toDataURL('image/png');
+}
+
 /** Finger / stylus signature capture. Produces a trimmed PNG data URL. */
 export function SignaturePad({ onDone, name }: { onDone: (dataUrl: string) => void; name: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -112,7 +123,7 @@ export function SignaturePad({ onDone, name }: { onDone: (dataUrl: string) => vo
       </div>
       <div className="mt-3 flex gap-2">
         <Button type="button" variant="ghost" icon={<Eraser className="h-4 w-4" />} onClick={clear}>Clear</Button>
-        <Button type="button" variant="primary" className="flex-1" disabled={empty} onClick={() => onDone(ref.current!.toDataURL('image/png'))}>Apply signature</Button>
+        <Button type="button" variant="primary" className="flex-1" disabled={empty} onClick={() => onDone(exportSignature(ref.current!))}>Apply signature</Button>
       </div>
     </div>
   );
@@ -121,6 +132,7 @@ export function SignaturePad({ onDone, name }: { onDone: (dataUrl: string) => vo
 /** Thumbnail strip for one check item with a camera button. Works offline: photos live in IndexedDB until synced. */
 export function PhotoStrip({ photoIds, onAdd, onRemove, disabled }: { photoIds: string[]; onAdd: (b: Blob) => void; onRemove?: (id: string) => void; disabled?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
+  const toast = useToast();
   const [view, setView] = useState<string | null>(null);
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -132,7 +144,8 @@ export function PhotoStrip({ photoIds, onAdd, onRemove, disabled }: { photoIds: 
           </button>
           <input ref={input} type="file" accept="image/*" capture="environment" className="hidden" onChange={async (e) => {
             const f = e.target.files?.[0]; e.target.value = '';
-            if (f) onAdd(await compressImage(f));
+            if (!f) return;
+            try { onAdd(await compressImage(f)); } catch (err) { toast((err as Error).message, 'err'); }
           }} />
         </>
       )}
@@ -157,9 +170,11 @@ function Thumb({ id, onOpen, onRemove }: { id: string; onOpen: (url: string) => 
 }
 
 export function usePhotoUrl(id: string) {
-  const photo = useLiveQuery(() => db.photos.get(id), [id]);
+  // undefined = still loading, null = not on this device (so it must come from the server)
+  const photo = useLiveQuery(async () => (await db.photos.get(id)) ?? null, [id]);
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
+    if (photo === undefined) return;
     let revoke: string | null = null;
     (async () => {
       let blob = photo?.blob;

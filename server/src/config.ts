@@ -13,7 +13,7 @@ export const config = {
   mailFrom: env.MAIL_FROM ?? 'Think Healthcare and Safety <no-reply@example.com>',
   reminderCron: env.REMINDER_CRON ?? '30 8 * * *', // 08:30 daily
   timezone: env.TZ_NAME ?? 'Asia/Kolkata',
-  demoPassword: env.DEMO_PASSWORD ?? 'Think@2026',
+  reminderTo: (env.REMINDER_TO ?? '').split(',').map((x) => x.trim()).filter(Boolean), // who receives the daily reminder email
   // Live deployments load the inventory and team only; local runs also add the paper-sample demo inspections.
   seedMode: env.SEED_MODE ?? (env.VERCEL || env.NODE_ENV === 'production' ? 'production' : 'demo'),
   // fileURLToPath (not URL.pathname) so Windows paths like C:\... resolve correctly

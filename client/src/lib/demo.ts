@@ -48,10 +48,10 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
     case '/auth/me': return JSON.parse(localStorage.getItem('think.session') ?? 'null')?.user as T;
     case '/sync/pull': {
       if (Number(q.get('since') ?? 0) > 0) {
-        return { cursor: s.pull.cursor, full: false, clients: [], buildings: [], floors: [], locations: [], assets: [], inspections: [],
+        return { cursor: s.pull.cursor, hasMore: false, full: false, clients: [], buildings: [], floors: [], locations: [], assets: [], inspections: [],
           photos: [], templates: [], team: [], notifications: [] } as T;
       }
-      return structuredClone(s.pull) as T;
+      return { ...structuredClone(s.pull), hasMore: false } as T;
     }
     case '/sync/push': {
       const results = [];
@@ -73,7 +73,6 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
       }
       return { results } as T;
     }
-    case '/users': return s.users.map((u) => ({ ...u, client_id: u.clientId, active: true, created_at: '' })) as T;
     case '/audit': {
       try { return JSON.parse(localStorage.getItem(AUDIT_KEY) ?? '[]') as T; } catch { return [] as T; }
     }

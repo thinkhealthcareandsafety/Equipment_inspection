@@ -124,14 +124,6 @@ CREATE TABLE IF NOT EXISTS team_members (
   seq bigint NOT NULL DEFAULT nextval('change_seq')
 );
 
-CREATE TABLE IF NOT EXISTS users (
-  id uuid PRIMARY KEY, email text NOT NULL UNIQUE, name text NOT NULL,
-  role text NOT NULL CHECK (role IN ('admin','inspector','reviewer','client_admin')),
-  client_id uuid REFERENCES clients(id), team_member_id uuid REFERENCES team_members(id),
-  password_hash text NOT NULL, active boolean NOT NULL DEFAULT true,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS inspections (
   id uuid PRIMARY KEY,
   client_id uuid NOT NULL REFERENCES clients(id),

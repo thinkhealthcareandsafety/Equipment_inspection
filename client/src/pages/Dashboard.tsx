@@ -7,8 +7,8 @@ import { Link, useNavigate } from 'react-router';
 import { ArrowRight, ClipboardCheck, MapPin, Search } from 'lucide-react';
 import { dueState, EQUIPMENT_LABELS, formatDate, todayISO } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
-import { buildReport, EMPTY_FILTERS } from '../lib/reports.ts';
-import { Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge } from '../components/ui.tsx';
+import { buildReport, EMPTY_FILTERS, roundText, roundTone } from '../lib/reports.ts';
+import { Bar, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge } from '../components/ui.tsx';
 
 export function Dashboard() {
   const user = useUser();
@@ -39,11 +39,12 @@ export function Dashboard() {
       .map((a) => ({ key: a.id, to: `/assets/${a.id}`, title: a.assetTag, sub: `${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}`, type: a.equipmentType })),
   ];
 
+  const rt = roundTone(k);
   const tiles = [
-    { label: 'To inspect', value: toInspect, sub: `${k.overdue} overdue · ${k.never} never inspected`, tone: k.overdue ? 'red' : toInspect ? 'amber' : 'green', to: '/reports?view=due' },
+    { label: 'This round', value: k.inDate, sub: roundText(k), tone: rt, bar: k.compliance, to: '/reports' },
+    { label: 'To inspect', value: toInspect, sub: k.overdue ? `${k.overdue} overdue` : 'None overdue', tone: k.overdue ? 'red' : 'neutral', to: '/reports?view=due' },
     { label: 'Out of service', value: k.outOfService, sub: 'Do not use until re-tested', tone: k.outOfService ? 'red' : 'green', to: '/reports?view=oos' },
     { label: 'Open defects', value: k.openDefects, sub: `${k.safetyCritical} safety-critical`, tone: k.openDefects ? 'red' : 'green', to: '/reports?view=defects' },
-    { label: 'In date', value: `${k.compliance}%`, sub: `of ${k.assets} assets`, tone: k.compliance >= 90 ? 'green' : k.compliance >= 60 ? 'amber' : 'red', to: '/reports' },
   ] as const;
 
   return (
@@ -74,8 +75,9 @@ export function Dashboard() {
         {tiles.map((t) => (
           <button key={t.label} onClick={() => nav(t.to)} className="card p-4 text-left transition hover:-translate-y-0.5 hover:shadow-lift">
             <div className="text-[13px] text-slate-500">{t.label}</div>
-            <div className={cx('mt-1 text-3xl font-semibold tabular', t.tone === 'red' ? 'text-rose-600' : t.tone === 'amber' ? 'text-amber-600' : 'text-emerald-600')}>{t.value}</div>
-            <div className="mt-1 text-xs text-slate-500">{t.sub}</div>
+            <div className={cx('mt-1 text-3xl font-semibold tabular', t.tone === 'red' ? 'text-rose-600' : t.tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{t.value}{t.label === 'This round' && <span className="text-base font-normal text-slate-400"> / {k.assets}</span>}</div>
+            {'bar' in t && <div className="mt-2"><Bar value={t.bar} tone="brand" /></div>}
+            <div className="mt-1.5 text-xs text-slate-500">{t.sub}</div>
           </button>
         ))}
       </div>

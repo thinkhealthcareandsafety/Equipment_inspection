@@ -10,7 +10,6 @@ import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
-import bcrypt from 'bcryptjs';
 import {
   addDays, applyDerivedResult, DEFAULT_TEMPLATES, emptyChecks, nextDueFrom, todayISO, uuid,
   type Asset, type CheckStatus, type Inspection,
@@ -22,14 +21,14 @@ import { importInventory } from '@think/shared';
 import { commitInventory } from './services/inventory.ts';
 import { upsertInspection } from './services/inspections.ts';
 import { toAsset } from './lib/mappers.ts';
-import type { AuthUser } from './lib/auth.ts';
+import { teamUser, type AuthUser } from './lib/auth.ts';
 
 const INVENTORY = new URL('./data/FLS Equipment - INDIA.xlsx', import.meta.url);
 
 export const TEAM = [
-  { name: 'Ashish Dalal', email: 'ashish.dalal@think-hs.demo', designation: 'Inspector' },
-  { name: 'Shikha Dixit', email: 'shikha.dixit@think-hs.demo', designation: 'Inspector' },
-  { name: 'Sumit Shah', email: 'sumit.shah@think-hs.demo', designation: 'Inspector' },
+  { name: 'Ashish Dalal', designation: 'Inspector' },
+  { name: 'Shikha Dixit', designation: 'Inspector' },
+  { name: 'Sumit Shah', designation: 'Inspector' },
 ];
 
 export async function seedIfEmpty(): Promise<boolean> {
@@ -38,7 +37,6 @@ export async function seedIfEmpty(): Promise<boolean> {
   const n = Number((await db.query<{ n: string }>('SELECT count(*) AS n FROM clients')).rows[0].n);
   if (n > 0) return false;
   console.log(`[seed] Empty database — seeding templates, inventory and ${live ? 'team (live mode, no demo logins)' : 'demo data'}…`);
-  const hash = await bcrypt.hash(config.demoPassword, 10);
 
   for (const t of Object.values(DEFAULT_TEMPLATES)) {
     await db.query('INSERT INTO templates (id, version, definition) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [t.id, t.version, JSON.stringify(t)]);
@@ -60,26 +58,13 @@ export async function seedIfEmpty(): Promise<boolean> {
     return true;
   }
 
-  const users: Record<string, AuthUser> = {};
-  const addUser = async (key: string, email: string, name: string, role: AuthUser['role'], opts: { clientId?: string; designation?: string } = {}) => {
-    let teamMemberId: string | null = null;
-    if (role === 'inspector' || role === 'reviewer') {
-      teamMemberId = uuid();
-      await db.query('INSERT INTO team_members (id, name, designation, email) VALUES ($1,$2,$3,$4)', [teamMemberId, name, opts.designation ?? 'Inspector', email]);
-    }
-    const id = uuid();
-    await db.query('INSERT INTO users (id, email, name, role, client_id, team_member_id, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [id, email, name, role, opts.clientId ?? null, teamMemberId, hash]);
-    users[key] = { id, email, name, role, clientId: opts.clientId ?? null, teamMemberId };
-  };
-  for (const m of TEAM) await addUser(m.name, m.email, m.name, 'inspector', { designation: m.designation });
-  await addUser('reviewer', 'reviewer@think-hs.demo', 'Technical Reviewer', 'reviewer', { designation: 'Reviewer' });
-  await addUser('admin', 'admin@think-hs.demo', 'Think Administrator', 'admin');
-  await addUser('client', 'jll.admin@jll.demo', 'JLL Facilities Admin', 'client_admin', { clientId });
+  for (const m of TEAM) await db.query('INSERT INTO team_members (id, name, designation) VALUES ($1,$2,$3)', [uuid(), m.name, m.designation]);
+  await db.query('INSERT INTO team_members (id, name, designation) VALUES ($1,$2,$3)', [uuid(), 'Technical Reviewer', 'Reviewer']);
+  const tech = teamUser('Ashish Dalal'), reviewer = teamUser('Technical Reviewer');
 
-  await seedPaperSamples(clientId, users['Ashish Dalal'], users.reviewer);
+  await seedPaperSamples(clientId, tech, reviewer);
   await audit(db, { action: 'seed', entityType: 'system', changes: { assets: imported.created } });
-  console.log(`[seed] Done. Demo password for all *.demo accounts: ${config.demoPassword}`);
+  console.log('[seed] Done. Open the app and enter the access code (default 9999).');
   return true;
 }
 

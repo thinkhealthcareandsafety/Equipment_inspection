@@ -70,9 +70,9 @@ export function Sites() {
                         </span>
                       ))}
                     </div>
-                    <div className="mt-4"><Bar value={g.compliance} /></div>
+                    <div className="mt-4"><Bar value={g.compliance} tone="brand" /></div>
                     <div className="mt-2 flex items-center justify-between text-xs">
-                      <span className="text-slate-500">{g.compliance}% in date</span>
+                      <span className="text-slate-500">{g.inDate === 0 ? 'Not started' : `${g.inDate} of ${g.assets} inspected`}</span>
                       <span className="flex gap-1.5">
                         {g.outOfService > 0 && <span className="rounded-full bg-rose-50 px-2 py-0.5 font-medium text-rose-700">{g.outOfService} out of service</span>}
                         {g.overdue > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">{g.overdue} overdue</span>}

@@ -9,27 +9,53 @@ import { OpError, upsertInspection } from '../services/inspections.ts';
 export const sync = Router();
 sync.use(requireAuth);
 
-/** Incremental pull: everything in the user's scope that changed after `since`. */
+/**
+ * Incremental pull, in pages. Every table shares one change sequence, so a page is "the next PAGE changes
+ * in order". This keeps each response far below the host's 4.5 MB limit however many inspections exist.
+ */
+const PAGE = 60;
 sync.get('/pull', async (req, res) => {
   const db = await getDb();
   const u = req.user!;
-  const since = Number(req.query.since ?? 0) || 0;
+  const since = Math.max(0, Number(req.query.since ?? 0) || 0);
   const head = Number((await db.query<{ v: string }>('SELECT last_value AS v FROM change_seq')).rows[0].v);
+  const cid = u.role === 'client_admin' ? u.clientId : null;
+  const own = (col: string) => (cid ? `AND ${col} = $3` : '');
+  const ownParams = cid ? [cid] : [];
+
+  // Where does this page end? The PAGE+1'th change tells us whether more remain.
+  const seqs = (await db.query<{ seq: string }>(
+    `SELECT seq FROM (
+       SELECT seq FROM clients WHERE seq > $1 ${own('id')}
+       UNION ALL SELECT seq FROM buildings WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM floors WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM locations WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM assets WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM inspections WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM photos WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM templates WHERE seq > $1
+       UNION ALL SELECT seq FROM team_members WHERE seq > $1
+       UNION ALL SELECT seq FROM notifications WHERE seq > $1 ${cid ? 'AND (client_id IS NULL OR client_id = $3)' : ''}
+     ) c ORDER BY seq LIMIT $2`, [since, PAGE + 1, ...ownParams])).rows.map((r) => Number(r.seq));
+  const hasMore = seqs.length > PAGE;
+  const upTo = hasMore ? seqs[PAGE - 1] : head;
+
   const s = scope(u, 'client_id', 2);
   const sel = (table: string, scoped = true) =>
-    db.query(`SELECT * FROM ${table} WHERE seq > $1 AND seq <= $2 ${scoped ? `AND ${s.sql}` : ''} ORDER BY seq`, [since, head, ...(scoped ? s.params : [])]);
+    db.query(`SELECT * FROM ${table} WHERE seq > $1 AND seq <= $2 ${scoped ? `AND ${s.sql}` : ''} ORDER BY seq`, [since, upTo, ...(scoped ? s.params : [])]);
   const cs = u.role === 'client_admin' ? { sql: 'id = $3', params: [u.clientId] } : { sql: 'true', params: [] };
   const [clients, buildings, floors, locations, assets, inspections, photos, templates, team, notifications] = await Promise.all([
-    db.query(`SELECT * FROM clients WHERE seq > $1 AND seq <= $2 AND ${cs.sql}`, [since, head, ...cs.params]),
+    db.query(`SELECT * FROM clients WHERE seq > $1 AND seq <= $2 AND ${cs.sql}`, [since, upTo, ...cs.params]),
     sel('buildings'), sel('floors'), sel('locations'), sel('assets'), sel('inspections'),
     db.query(`SELECT id, inspection_id, client_id, check_no, mime, caption, created_by, created_at, seq FROM photos
-              WHERE seq > $1 AND seq <= $2 AND ${s.sql}`, [since, head, ...s.params]),
+              WHERE seq > $1 AND seq <= $2 AND ${s.sql}`, [since, upTo, ...s.params]),
     sel('templates', false),
     isStaff(u) ? sel('team_members', false) : Promise.resolve({ rows: [] }),
-    db.query(`SELECT * FROM notifications WHERE seq > $1 AND seq <= $2 AND (client_id IS NULL OR ${s.sql}) ORDER BY seq`, [since, head, ...s.params]),
+    db.query(`SELECT * FROM notifications WHERE seq > $1 AND seq <= $2 AND (client_id IS NULL OR ${s.sql}) ORDER BY seq`, [since, upTo, ...s.params]),
   ]);
   res.json({
-    cursor: head,
+    cursor: upTo,
+    hasMore,
     full: since === 0,
     clients: clients.rows.map(toClient),
     buildings: buildings.rows.map(toBuilding),

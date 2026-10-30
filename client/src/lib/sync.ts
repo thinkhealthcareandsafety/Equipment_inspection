@@ -63,6 +63,7 @@ export function syncNow(): Promise<void> {
 const RETRYABLE_LIMIT = 6;
 
 async function push() {
+  let batchLimit = 25;
   for (;;) {
     const ops = await db.outbox.where('state').equals('pending').sortBy('seq');
     if (!ops.length) return;
@@ -71,14 +72,24 @@ async function push() {
     for (const op of ops) {
       if (op.type === 'photo.put') { if (!batch.length) batch.push(op); break; }
       batch.push(op);
-      if (batch.length >= 25) break;
+      if (batch.length >= batchLimit) break;
     }
     const payloadOps = await Promise.all(batch.map(async (op) => ({
       opId: op.opId, type: op.type, clientAt: op.clientAt, offline: op.offline,
       payload: op.type === 'photo.put' ? await photoPayload(op.entityId) : op.payload,
     })));
-    const res = await api<{ results: { opId: string; ok: boolean; code?: string; error?: string; result?: any; current?: any }[] }>(
-      '/sync/push', { method: 'POST', json: { deviceId: deviceId(), ops: payloadOps } });
+    let res: { results: { opId: string; ok: boolean; code?: string; error?: string; result?: any; current?: any }[] };
+    try {
+      res = await api('/sync/push', { method: 'POST', json: { deviceId: deviceId(), ops: payloadOps } });
+    } catch (e) {
+      // 413 = the request was too big for the host. Send items one at a time; a single oversized item is parked, never blocking the rest.
+      if (e instanceof ApiError && e.status === 413) {
+        if (batch.length > 1) { batchLimit = 1; continue; } // retry one at a time through the normal path
+        await db.outbox.update(batch[0].seq!, { state: 'failed', lastError: 'Too large to upload. Remove the photo and add it again.' });
+        continue;
+      }
+      throw e;
+    }
     let progressed = false;
     for (const r of res.results) {
       const op = batch.find((o) => o.opId === r.opId)!;
@@ -121,13 +132,23 @@ async function acceptServerInspection(server: Inspection) {
 
 interface PullResponse {
   cursor: number; full: boolean;
+  hasMore?: boolean;
   clients: any[]; buildings: any[]; floors: any[]; locations: any[]; assets: any[]; inspections: Inspection[];
   photos: any[]; templates: any[]; team: any[]; notifications: any[];
 }
 
 async function pull() {
-  const since = await getMeta<number>('cursor', 0);
-  const d = await api<PullResponse>(`/sync/pull?since=${since}`);
+  // Overlap by a few changes: a write that committed just after our last read is picked up next time. Re-applying is harmless.
+  const OVERLAP = 30;
+  for (let guard = 0; guard < 200; guard++) {
+    const cursor = await getMeta<number>('cursor', 0);
+    const d = await api<PullResponse>(`/sync/pull?since=${cursor === 0 ? 0 : Math.max(0, cursor - OVERLAP)}`);
+    await applyPull(d);
+    if (!d.hasMore) return;
+  }
+}
+
+async function applyPull(d: PullResponse) {
   await db.transaction('rw', [db.clients, db.buildings, db.floors, db.locations, db.assets, db.inspections, db.photos, db.templates, db.team, db.notifications, db.outbox, db.meta], async () => {
     await db.clients.bulkPut(d.clients);
     await db.buildings.bulkPut(d.buildings);
@@ -141,7 +162,8 @@ async function pull() {
     await db.templates.bulkPut(d.templates);
     await db.team.bulkPut(d.team);
     for (const n of d.notifications) { const ex = await db.notifications.get(n.id); if (!ex) await db.notifications.put(n); }
-    await db.meta.put({ key: 'cursor', value: d.cursor });
+    const prev = ((await db.meta.get('cursor'))?.value as number) ?? 0;
+    await db.meta.put({ key: 'cursor', value: Math.max(prev, d.cursor) });
   });
 }
 

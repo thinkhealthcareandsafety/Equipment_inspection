@@ -41,8 +41,7 @@ export async function runReminders(today = todayISO()) {
   if (digest.size) {
     const transport = config.smtpUrl ? nodemailer.createTransport(config.smtpUrl) : null;
     for (const [clientId, d] of digest) {
-      const to = (await db.query<{ email: string }>(`SELECT email FROM users WHERE active AND email NOT LIKE '%.demo'
-        AND (role IN ('inspector','reviewer','admin') OR client_id = $1)`, [clientId])).rows.map((x) => x.email);
+      const to = config.reminderTo;
       const subject = `Inspection reminders — ${d.client} (${d.lines.length})`;
       const text = `Think Healthcare and Safety\n\n${subject}\n\n${d.lines.join('\n')}\n`;
       if (transport && to.length) {

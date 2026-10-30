@@ -8,6 +8,7 @@ import { can, useUser } from '../lib/hooks.ts';
 import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from '../lib/store.ts';
 import { AssetStatusBadge, Badge, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, Field, PageHeader, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
+import { FloorsSheet } from '../components/FloorTools.tsx';
 import { useDialogs } from '../components/Dialogs.tsx';
 
 const UNASSIGNED = '__none';
@@ -26,6 +27,7 @@ export function BuildingPage() {
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [moveOpen, setMoveOpen] = useState(false);
+  const [floorsOpen, setFloorsOpen] = useState(false);
   const [floorEdit, setFloorEdit] = useState<{ id?: string; name: string } | null>(null);
 
   const data = useLiveQuery(async () => {
@@ -82,7 +84,10 @@ export function BuildingPage() {
       {/* Floor selector */}
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm font-semibold text-slate-500">Floors</div>
-        {staff && <Button size="sm" variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setFloorEdit({ name: '' })}>Add floor</Button>}
+        {staff && <div className="flex gap-1">
+          <Button size="sm" variant="ghost" icon={<Layers className="h-4 w-4" />} onClick={() => setFloorsOpen(true)}>Add floors</Button>
+          <Button size="sm" variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setFloorEdit({ name: '' })}>One floor</Button>
+        </div>}
       </div>
       <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         <Chip active={!floorSel} onClick={() => setFloor('')} count={assets.length}>All floors</Chip>
@@ -90,6 +95,12 @@ export function BuildingPage() {
         {unassigned > 0 && <Chip active={floorSel === UNASSIGNED} onClick={() => setFloor(UNASSIGNED)} count={unassigned}>Unassigned</Chip>}
       </div>
 
+      {staff && floors.length === 0 && (
+        <button onClick={() => setFloorsOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-dashed border-brand-300 bg-brand-50/60 p-4 text-left transition hover:bg-brand-50">
+          <Layers className="h-5 w-5 shrink-0 text-brand-600" />
+          <span className="text-sm"><b className="text-slate-900">Add this site's floors</b><span className="block text-slate-600">One tap adds Ground to the top floor, so reports can show floor by floor.</span></span>
+        </button>
+      )}
       {can.inspect(user.role) && visible.some(todo) && !selecting && (
         <Button variant="primary" size="lg" className="mb-4 w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />}
           onClick={() => startInspection(visible.find(todo)!)}>
@@ -183,6 +194,7 @@ export function BuildingPage() {
           toast(`${selected.size} asset${selected.size > 1 ? 's' : ''} moved`); setSelected(new Set()); setSelecting(false); setMoveOpen(false);
         }} />
 
+      <FloorsSheet open={floorsOpen} onClose={() => setFloorsOpen(false)} building={{ id: buildingId, clientId: building.clientId }} floors={floors} />
       <Sheet open={!!floorEdit} onClose={() => setFloorEdit(null)} title={floorEdit?.id ? 'Rename floor' : 'Add floor'} footer={<>
         {floorEdit?.id && <Button variant="ghost" className="text-rose-600" icon={<Trash2 className="h-4 w-4" />} onClick={async () => {
           if (assets.some((a) => a.floorId === floorEdit.id)) { toast('Move the assets off this floor first', 'err'); return; }

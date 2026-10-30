@@ -1,9 +1,7 @@
 import { Router } from 'express';
-import bcrypt from 'bcryptjs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import multer from 'multer';
-import { z } from 'zod';
-import { slugCode, uuid, type Role } from '@think/shared';
+import { slugCode, uuid } from '@think/shared';
 import { audit, getDb } from '../db.ts';
 import { codeMatches, requireAuth, requireRole, scope, teamUser } from '../lib/auth.ts';
 import { commitInventory, previewInventory } from '../services/inventory.ts';
@@ -74,54 +72,6 @@ api.post('/import/commit', requireRole('admin'), upload.single('file'), async (r
 api.get('/import/batches', requireRole('admin'), async (_req, res) => {
   const db = await getDb();
   res.json((await db.query('SELECT id, client_id, filename, created_at, summary FROM import_batches ORDER BY created_at DESC LIMIT 20')).rows);
-});
-
-// ---------- users ----------
-api.get('/users', requireRole('admin'), async (_req, res) => {
-  const db = await getDb();
-  res.json((await db.query('SELECT id, email, name, role, client_id, team_member_id, active, created_at FROM users ORDER BY role, name')).rows);
-});
-
-const NewUser = z.object({
-  email: z.string().email(), name: z.string().min(2), role: z.enum(['admin', 'inspector', 'reviewer', 'client_admin']),
-  clientId: z.string().uuid().nullable().optional(), password: z.string().min(8),
-});
-api.post('/users', requireRole('admin'), async (req, res) => {
-  const p = NewUser.safeParse(req.body);
-  if (!p.success) return res.status(400).json({ error: p.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ') });
-  if (p.data.role === 'client_admin' && !p.data.clientId) return res.status(400).json({ error: 'Client admins must belong to a client' });
-  const db = await getDb();
-  const id = uuid();
-  try {
-    await db.tx(async (q) => {
-      let teamId: string | null = null;
-      if (p.data.role === 'inspector' || p.data.role === 'reviewer') {
-        // Reuse a team member with the same name (e.g. the pre-loaded inspectors) so the picker never shows duplicates.
-        const existing = (await q.query<{ id: string }>('SELECT id FROM team_members WHERE lower(name) = lower($1) AND active LIMIT 1', [p.data.name])).rows[0];
-        if (existing) {
-          teamId = existing.id;
-          await q.query(`UPDATE team_members SET email = $2, seq = nextval('change_seq') WHERE id = $1`, [teamId, p.data.email]);
-        } else {
-          teamId = uuid();
-          await q.query('INSERT INTO team_members (id, name, designation, email) VALUES ($1,$2,$3,$4)',
-            [teamId, p.data.name, p.data.role === 'reviewer' ? 'Reviewer' : 'Inspector', p.data.email]);
-        }
-      }
-      await q.query('INSERT INTO users (id, email, name, role, client_id, team_member_id, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [id, p.data.email, p.data.name, p.data.role as Role, p.data.role === 'client_admin' ? p.data.clientId : null, teamId, await bcrypt.hash(p.data.password, 10)]);
-      await audit(q, { user: req.user!, action: 'user.create', entityType: 'user', entityId: id, changes: { email: p.data.email, role: p.data.role } });
-    });
-    res.json({ id });
-  } catch (e) { res.status(409).json({ error: /unique/i.test((e as Error).message) ? 'That email is already registered' : (e as Error).message }); }
-});
-
-api.patch('/users/:id', requireRole('admin'), async (req, res) => {
-  const db = await getDb();
-  const active = !!req.body.active;
-  if (req.params.id === req.user!.id && !active) return res.status(400).json({ error: 'You cannot deactivate yourself' });
-  await db.query('UPDATE users SET active = $2 WHERE id = $1', [req.params.id, active]);
-  await audit(db, { user: req.user!, action: active ? 'user.activate' : 'user.deactivate', entityType: 'user', entityId: req.params.id });
-  res.json({ ok: true });
 });
 
 // ---------- audit trail ----------

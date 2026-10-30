@@ -414,7 +414,7 @@ export function summaryReport(r: Report, opts: { title: string; filters: string[
   const k = r.kpis;
   const tiles: [string, string, [number, number, number]][] = [
     ['Assets in scope', String(k.assets), INK],
-    ['Compliance (in date)', `${k.compliance}%`, k.compliance >= 90 ? GREEN : k.compliance >= 60 ? AMBER : RED],
+    ['Round progress', k.inDate === 0 ? 'Not started' : `${k.inDate} of ${k.assets}`, k.overdue > 0 ? RED : k.inDate >= k.assets ? GREEN : INK],
     ['Pass rate (period)', k.passRate == null ? '—' : `${k.passRate}%`, INK],
     ['Inspections (period)', String(k.inspections), INK],
     ['Open defects', String(k.openDefects), k.openDefects ? RED : GREEN],
@@ -440,11 +440,11 @@ export function summaryReport(r: Report, opts: { title: string; filters: string[
     { title: GROUP_LABELS[opts.groupBy], w: nameW }, { title: 'Assets', w: 13, align: 'right' }, { title: 'Inspected', w: 15, align: 'right' },
     { title: 'Pass rate', w: 15, align: 'right' }, { title: 'Defects', w: 14, align: 'right' }, { title: 'Out of svc', w: 15, align: 'right' },
     { title: 'Overdue', w: 14, align: 'right' }, { title: 'Due 14d', w: 13, align: 'right' }, { title: 'Never', w: 12, align: 'right' },
-    { title: 'Compliance', w: CW - nameW - 111, align: 'right' },
+    { title: 'Round', w: CW - nameW - 111, align: 'right' },
   ], [...r.groups.map((g) => [g.sub ? `${g.label} — ${g.sub}` : g.label, String(g.assets), String(g.inspected), g.passRate == null ? '—' : `${g.passRate}%`,
-    String(g.openDefects), String(g.outOfService), String(g.overdue), String(g.dueSoon), String(g.never), `${g.compliance}%`]),
+    String(g.openDefects), String(g.outOfService), String(g.overdue), String(g.dueSoon), String(g.never), `${g.inDate}/${g.assets}`]),
   ['Total', String(k.assets), String(k.inspectedInPeriod), k.passRate == null ? '—' : `${k.passRate}%`, String(k.openDefects), String(k.outOfService),
-    String(k.overdue), String(k.dueSoon), String(k.never), `${k.compliance}%`]],
+    String(k.overdue), String(k.dueSoon), String(k.never), `${k.inDate}/${k.assets}`]],
   { color: (ri, ci) => {
     const g = r.groups[ri];
     if (!g) return INK; // totals row

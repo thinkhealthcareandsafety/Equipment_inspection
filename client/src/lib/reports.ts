@@ -20,7 +20,7 @@ export const GROUP_LABELS: Record<GroupBy, string> = { city: 'City', building: '
 export interface GroupRow {
   key: string; label: string; sub: string;
   assets: number; inspected: number; inspections: number; passed: number; passRate: number | null;
-  openDefects: number; outOfService: number; overdue: number; dueSoon: number; never: number; compliance: number;
+  openDefects: number; outOfService: number; overdue: number; dueSoon: number; never: number; compliance: number; inDate: number;
 }
 
 export interface DefectRow extends OpenDefect { asset: Asset; building?: Building; floor?: Floor }
@@ -29,6 +29,8 @@ export interface Report {
   range: { from: string | null; to: string };
   kpis: {
     assets: number; inspectedInPeriod: number; inspections: number; passRate: number | null; compliance: number;
+    /** Assets whose inspection is current (done within the 90-day cycle). */
+    inDate: number;
     openDefects: number; safetyCritical: number; outOfService: number; overdue: number; dueSoon: number; never: number; incompleteData: number;
   };
   groups: GroupRow[];
@@ -115,7 +117,7 @@ export function buildReport(
   for (const a of assets) {
     const [key, label, sub] = keyOf(a);
     const g = groups.get(key) ?? { key, label, sub, assets: 0, inspected: 0, inspections: 0, passed: 0, passRate: null,
-      openDefects: 0, outOfService: 0, overdue: 0, dueSoon: 0, never: 0, compliance: 0 };
+      openDefects: 0, outOfService: 0, overdue: 0, dueSoon: 0, never: 0, compliance: 0, inDate: 0 };
     g.assets++;
     const ins = inspByAsset.get(a.id) ?? [];
     if (ins.length) g.inspected++;
@@ -130,7 +132,7 @@ export function buildReport(
     if (d === 'ok' || d === 'due_soon') g.compliance++;
     groups.set(key, g);
   }
-  const rows = [...groups.values()].map((g) => ({ ...g, passRate: g.inspections ? pct(g.passed, g.inspections) : null, compliance: pct(g.compliance, g.assets) }))
+  const rows = [...groups.values()].map((g) => ({ ...g, passRate: g.inspections ? pct(g.passed, g.inspections) : null, inDate: g.compliance, compliance: pct(g.compliance, g.assets) }))
     .sort((a, b) => (a.sub + a.label).localeCompare(b.sub + b.label, undefined, { numeric: true }));
 
   const defects: DefectRow[] = assets.flatMap((a) => a.openDefects.map((d) => ({ ...d, asset: a, building: bById.get(a.buildingId), floor: a.floorId ? fById.get(a.floorId) : undefined })))
@@ -153,6 +155,7 @@ export function buildReport(
       inspections: inspections.length,
       passRate: inspections.length ? pct(passed, inspections.length) : null,
       compliance: pct(states.filter((s) => s === 'ok' || s === 'due_soon').length, assets.length),
+      inDate: states.filter((s) => s === 'ok' || s === 'due_soon').length,
       openDefects: defects.length,
       safetyCritical: defects.filter((d) => d.safetyCritical).length,
       outOfService: assets.filter((a) => a.status === 'out_of_service').length,
@@ -164,6 +167,18 @@ export function buildReport(
     groups: rows, defects, due, toInspect, assets, inspections,
   };
 }
+
+/**
+ * Colour for the round-progress number. Red only when something is actually overdue: on day one nothing has been
+ * inspected yet, and a red 0% would read as failure when the round simply has not started.
+ */
+export function roundTone(k: { overdue: number; inDate: number; assets: number }): 'red' | 'green' | 'neutral' {
+  if (k.overdue > 0) return 'red';
+  if (k.assets > 0 && k.inDate >= k.assets) return 'green';
+  return 'neutral';
+}
+
+export const roundText = (k: { inDate: number; assets: number }) => (k.inDate === 0 ? 'Not started yet' : `${k.inDate} of ${k.assets} inspected`);
 
 export function daysOverdue(a: Asset, today = todayISO()) {
   return a.nextDueDate ? -diffDays(a.nextDueDate, today) : null;

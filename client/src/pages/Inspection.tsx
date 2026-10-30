@@ -17,11 +17,12 @@ import {
 } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
-import { addPhoto, nextDueOnFloor, openOrCreateInspection, reviewInspection, saveInspection, submitInspection, templateFor } from '../lib/store.ts';
+import { addPhoto, nextDueOnFloor, openOrCreateInspection, reviewInspection, saveInspection, submitInspection, templateFor, updateAsset } from '../lib/store.ts';
 import { useSync } from '../lib/sync.ts';
 import { downloadInspectionPack } from '../lib/exportPack.ts';
 import { describeEvent } from '../lib/pdf.ts';
 import { PaperView } from '../components/PaperView.tsx';
+import { FloorsSheet } from '../components/FloorTools.tsx';
 import { PersonPicker, PhotoStrip, SignaturePad } from '../components/Inputs.tsx';
 import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
 
@@ -62,10 +63,12 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
   const [menu, setMenu] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
+  const [floorsOpen, setFloorsOpen] = useState(false);
   const [done, setDone] = useState<{ next: Asset | null } | null>(null);
   const [saved, setSaved] = useState<'saved' | 'saving'>('saved');
   const stored = useLiveQuery(() => db.inspections.get(initial.id), [initial.id]);
   const asset = useLiveQuery(() => db.assets.get(initial.assetId), [initial.assetId]);
+  const floors = useLiveQuery(() => db.floors.where('buildingId').equals(initial.buildingId).toArray(), [initial.buildingId]) ?? [];
   const pending = useRef<Inspection | null>(null);
   const timer = useRef<number>(undefined);
   const editable = canEdit(insp, user.role, user.id);
@@ -192,6 +195,22 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
               </div>
               <button onClick={() => setEditDetails(!editDetails)} className="shrink-0 text-sm font-medium text-brand-700">{editDetails ? 'Done' : 'Edit details'}</button>
             </div>
+            {asset && (
+              <div className="mt-3 flex items-center gap-2">
+                <span className="shrink-0 text-xs font-medium text-slate-500">Floor</span>
+                <div className="scrollbar-none flex min-w-0 flex-1 items-center gap-2 overflow-x-auto" aria-label="Floor">
+                {[...floors].sort((a, b) => a.sortOrder - b.sortOrder).map((f) => (
+                  <button key={f.id} type="button" onClick={async () => {
+                    await updateAsset(asset, { floorId: f.id, locationId: null });
+                    update((d) => ({ ...d, header: { ...d.header, siteLocationDepartment: f.name } }));
+                  }} className={cx('h-8 shrink-0 rounded-full px-3 text-sm font-medium ring-1 ring-inset transition',
+                    asset.floorId === f.id ? 'bg-ink-950 text-white ring-ink-950' : 'bg-white text-slate-600 ring-slate-200 hover:ring-slate-300')}>{f.name}</button>
+                ))}
+                <button type="button" onClick={() => setFloorsOpen(true)} className="h-8 shrink-0 rounded-full px-3 text-sm font-medium text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50">
+                  {floors.length ? '+ Add' : '+ Add floors'}</button>
+                </div>
+              </div>
+            )}
             {!editDetails && missingHeader.length > 0 && (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
                 {missingHeader.map((f) => <HeaderInput key={f.key} f={f} insp={insp} t={t} update={update} error={err(`header.${f.key}`)} />)}
@@ -280,6 +299,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
         </div>
       )}
 
+      <FloorsSheet open={floorsOpen} onClose={() => setFloorsOpen(false)} building={{ id: insp.buildingId, clientId: insp.clientId }} floors={floors} />
       <SignSheet open={signOpen} onClose={() => setSignOpen(false)} name={h.technician || user.name} savedSig={loadSig(h.technician || user.name)} onSign={submit} />
 
       <Sheet open={!!done} onClose={() => setDone(null)} title="Submitted">

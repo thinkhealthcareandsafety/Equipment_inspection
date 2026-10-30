@@ -15,7 +15,8 @@ Optional settings under **Settings → Environment Variables**:
 |---|---|
 | `ACCESS_CODE` | change the shared password from `9999` |
 | `CRON_SECRET` | any random text; turns on the daily reminder job |
-| `SMTP_URL`, `MAIL_FROM` | email the reminders |
+| `REMINDER_TO` | who receives the daily reminder email, comma separated |
+| `SMTP_URL`, `MAIL_FROM` | the mail server used to send it |
 
 The browser-only demo (no server, no database) is still available with `npm run build:demo`.
 

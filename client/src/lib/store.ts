@@ -191,7 +191,9 @@ export async function openOrCreateInspection(asset: Asset, user: User): Promise<
 /** The next unit on the same floor that still needs inspecting this cycle, so inspectors can work a floor without going back to the list. */
 export async function nextDueOnFloor(current: Asset): Promise<Asset | null> {
   const all = await db.assets.where('buildingId').equals(current.buildingId).toArray();
-  return all
-    .filter((a) => a.id !== current.id && (a.floorId ?? null) === (current.floorId ?? null) && a.status !== 'removed' && dueState(a.nextDueDate) !== 'ok')
-    .sort((a, b) => a.assetTag.localeCompare(b.assetTag, undefined, { numeric: true }))[0] ?? null;
+  const due = all.filter((a) => a.id !== current.id && a.status !== 'removed' && dueState(a.nextDueDate) !== 'ok');
+  const sameFloor = due.filter((a) => (a.floorId ?? null) === (current.floorId ?? null));
+  // Units whose floor is not recorded yet still need inspecting, so they follow once this floor is done.
+  const pool = sameFloor.length ? sameFloor : due.filter((a) => !a.floorId);
+  return pool.sort((a, b) => a.assetTag.localeCompare(b.assetTag, undefined, { numeric: true }))[0] ?? null;
 }

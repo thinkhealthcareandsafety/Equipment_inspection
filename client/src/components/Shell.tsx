@@ -70,11 +70,14 @@ export function Shell() {
         </div>
         <nav className="flex-1 space-y-1 px-3">
           {nav.map((n) => (
-            <NavLink key={n.label} to={n.to} end={n.to === '/'} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition',
-              isActive ? 'bg-white/10 text-white' : 'hover:bg-white/5 hover:text-white')}>
-              {n.icon}<span className="flex-1">{n.label}</span>
-              {!!n.badge && <span className="rounded-full bg-brand-500 px-2 py-0.5 text-[11px] font-semibold text-white">{n.badge}</span>}
-            </NavLink>
+            <div key={n.label}>
+              {n.label === 'Team' && <div className="px-3 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-slate-500">Manage</div>}
+              <NavLink to={n.to} end={n.to === '/'} className={({ isActive }) => cx('flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] font-medium transition',
+                isActive ? 'bg-white/10 text-white' : 'hover:bg-white/5 hover:text-white')}>
+                {n.icon}<span className="flex-1">{n.label}</span>
+                {!!n.badge && <span className="rounded-full bg-brand-500 px-2 py-0.5 text-[11px] font-semibold text-white">{n.badge}</span>}
+              </NavLink>
+            </div>
           ))}
         </nav>
         <div className="space-y-3 p-4">
