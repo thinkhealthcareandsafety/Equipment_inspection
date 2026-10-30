@@ -106,9 +106,16 @@ api.post('/users', requireRole('admin'), async (req, res) => {
     await db.tx(async (q) => {
       let teamId: string | null = null;
       if (p.data.role === 'inspector' || p.data.role === 'reviewer') {
-        teamId = uuid();
-        await q.query('INSERT INTO team_members (id, name, designation, email) VALUES ($1,$2,$3,$4)',
-          [teamId, p.data.name, p.data.role === 'reviewer' ? 'Reviewer' : 'Inspector', p.data.email]);
+        // Reuse a team member with the same name (e.g. the pre-loaded inspectors) so the picker never shows duplicates.
+        const existing = (await q.query<{ id: string }>('SELECT id FROM team_members WHERE lower(name) = lower($1) AND active LIMIT 1', [p.data.name])).rows[0];
+        if (existing) {
+          teamId = existing.id;
+          await q.query(`UPDATE team_members SET email = $2, seq = nextval('change_seq') WHERE id = $1`, [teamId, p.data.email]);
+        } else {
+          teamId = uuid();
+          await q.query('INSERT INTO team_members (id, name, designation, email) VALUES ($1,$2,$3,$4)',
+            [teamId, p.data.name, p.data.role === 'reviewer' ? 'Reviewer' : 'Inspector', p.data.email]);
+        }
       }
       await q.query('INSERT INTO users (id, email, name, role, client_id, team_member_id, password_hash) VALUES ($1,$2,$3,$4,$5,$6,$7)',
         [id, p.data.email, p.data.name, p.data.role as Role, p.data.role === 'client_admin' ? p.data.clientId : null, teamId, await bcrypt.hash(p.data.password, 10)]);

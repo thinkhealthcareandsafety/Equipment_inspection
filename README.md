@@ -2,11 +2,24 @@
 
 Digital, offline-first replacement for the paper **Equipment-Specific Checklists** and **Master Inspection & Fitness Certificate** for wheelchairs, scoop stretchers, foldable stretchers and stretchers.
 
-## Live demo on Vercel
+## Deploy on Vercel (full app, shared by the whole team)
 
-`vercel.json` is already set up. In Vercel choose **Add New → Project → Import** this repository and press **Deploy**; no settings need changing. Every push to `main` redeploys.
+1. **Import** this repository at https://vercel.com/new. Set **Application Preset** to **Other**; the build settings come from `vercel.json`.
+2. In the project's **Storage** tab, add a **Neon (Postgres)** database and connect it to the project. This creates `DATABASE_URL` automatically.
+3. Add these under **Settings → Environment Variables**:
 
-This publishes the browser-only demo (all 331 assets; each person's entries stay in their own browser). The full multi-user server (`npm start`) needs a host that runs Node.js with PostgreSQL.
+| Name | Value |
+|---|---|
+| `JWT_SECRET` | a long random string (required) |
+| `ADMIN_EMAIL` | the first administrator's login email |
+| `ADMIN_PASSWORD` | at least 8 characters; change it after signing in |
+| `CRON_SECRET` | a random string; enables the daily reminder job |
+| `SMTP_URL`, `MAIL_FROM` | optional, to email reminders |
+
+4. **Redeploy.** The build creates the database tables, loads the 331-unit FLS inventory the first time, adds the three inspectors to the Technician list, and creates the administrator. Re-deploying never duplicates data.
+5. Sign in as the administrator, then use **Admin → Users** to give each inspector, reviewer and client admin a login.
+
+The browser-only demo (no server, no database) is still available with `npm run build:demo`.
 
 ## Run it on your computer
 

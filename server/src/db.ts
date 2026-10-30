@@ -23,7 +23,7 @@ export async function getDb(): Promise<Db> {
   if (db) return db;
   if (config.databaseUrl) {
     const pg = await import('pg');
-    const pool = new pg.default.Pool({ connectionString: config.databaseUrl });
+    const pool = new pg.default.Pool({ connectionString: config.databaseUrl, max: config.poolMax, idleTimeoutMillis: 10_000 });
     db = {
       query: (text, params) => pool.query(text, params as unknown[]) as never,
       async tx(fn) {
