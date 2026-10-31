@@ -52,8 +52,10 @@ export function deriveResult(t: ChecklistTemplate, checks: CheckEntry[], ft: Fun
     if (e.status === 'RECT') rect.push(item.no);
     if (e.status === 'M') maint.push(item.no);
   }
-  const testFailed = ft.required === 'yes' && ft.result === 'fail';
-  if (ft.required === null || (ft.required === 'yes' && !ft.result)) complete = false;
+  // The functional test only exists once every check is answered and none is Fail (see functionalTestGate).
+  const gate = functionalTestGate(t, checks).gate;
+  const testFailed = gate === 'open' && ft.required === 'yes' && ft.result === 'fail';
+  if (gate === 'open' && (ft.required === null || (ft.required === 'yes' && !ft.result))) complete = false;
   const defects = failed.length > 0 || rect.length > 0 || testFailed;
   return {
     allPassed: complete && !defects,
@@ -81,19 +83,35 @@ export function applyDerivedResult(t: ChecklistTemplate, insp: Pick<Inspection, 
   };
 }
 
-/** The functional test may only be passed when no check is a Fail (Maintenance is allowed). */
 export function functionalTestBlockers(checks: CheckEntry[]): number[] {
   return checks.filter((c) => c.status === 'F').map((c) => c.no);
 }
 
+export type TestGate = 'locked' | 'blocked' | 'open';
+
 /**
- * When "Test required" is No the remaining test fields do not apply.
- * A Pass recorded before a check was failed is cleared so it must be re-decided.
+ * The Functional / Load Test record follows the checklist:
+ *  - locked:  some check is still unanswered, so the test cannot be recorded yet
+ *  - blocked: a check is Fail, so the test is not performed (the unit already fails)
+ *  - open:    every check is answered and none is Fail (P, M, NA or RECT), so the test Pass / Fail applies
  */
-export function normalizeFunctionalTest(ft: FunctionalTest, checks: CheckEntry[] = []): FunctionalTest {
+export function functionalTestGate(t: ChecklistTemplate, checks: CheckEntry[]): { gate: TestGate; failed: number[] } {
+  const failed = functionalTestBlockers(checks);
+  if (failed.length) return { gate: 'blocked', failed };
+  const allAnswered = t.checks.every((i) => checks.find((c) => c.no === i.no)?.status);
+  return { gate: allAnswered ? 'open' : 'locked', failed };
+}
+
+/**
+ * Keeps the test record consistent with the gate. When a check is Fail the test is "not performed" (recorded as
+ * Not applicable, with no Yes/No answer). When "Test required" is No the remaining test fields do not apply.
+ */
+export function normalizeFunctionalTest(ft: FunctionalTest, checks: CheckEntry[], t: ChecklistTemplate): FunctionalTest {
+  const { gate } = functionalTestGate(t, checks);
+  if (gate === 'blocked') return { ...ft, required: null, result: 'na', specifiedLoadKg: null, actualLoadKg: null };
+  if (gate === 'open' && ft.required === null && ft.result === 'na') return { ...ft, result: null }; // the check that failed was corrected
   if (ft.required === 'no') return { ...ft, result: 'na', specifiedLoadKg: null, actualLoadKg: null };
   if (ft.required === 'yes' && ft.result === 'na') return { ...ft, result: null };
-  if (ft.result === 'pass' && functionalTestBlockers(checks).length) return { ...ft, result: null };
   return ft;
 }
 
@@ -130,15 +148,14 @@ export function validateInspection(t: ChecklistTemplate, insp: Inspection, forSu
   }
 
   const ft = insp.functionalTest;
-  if (forSubmit && !ft.required) err('functionalTest.required', 'Answer Yes or No');
-  if (ft.required === 'yes') {
-    if (forSubmit && !ft.method.trim()) err('functionalTest.method', 'Required when a test is required');
-    if (forSubmit && !ft.observations.trim()) err('functionalTest.observations', 'Record the actual result');
-    if (forSubmit && (!ft.result || ft.result === 'na')) err('functionalTest.result', 'Select Pass or Fail');
-    if (ft.result === 'fail' && !ft.observations.trim()) err('functionalTest.observations', 'Describe the failure');
-    const blockers = functionalTestBlockers(insp.checks);
-    if (ft.result === 'pass' && blockers.length)
-      err('functionalTest.result', `Cannot pass the functional test while check ${blockers.map((n) => `#${n}`).join(', ')} is Fail`);
+  if (functionalTestGate(t, insp.checks).gate === 'open') {
+    if (forSubmit && !ft.required) err('functionalTest.required', 'Answer Yes or No');
+    if (ft.required === 'yes') {
+      if (forSubmit && !ft.method.trim()) err('functionalTest.method', 'Required when a test is required');
+      if (forSubmit && !ft.observations.trim()) err('functionalTest.observations', 'Record the actual result');
+      if (forSubmit && (!ft.result || ft.result === 'na')) err('functionalTest.result', 'Select Pass or Fail');
+      if (ft.result === 'fail' && !ft.observations.trim()) err('functionalTest.observations', 'Describe the failure');
+    }
   }
 
   const d = deriveResult(t, insp.checks, ft);

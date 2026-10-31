@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDays, assetAfterInspection, blocking, DEFAULT_TEMPLATES, deriveResult, emptyChecks, emptyFunctionalTest,
+  addDays, assetAfterInspection, blocking, DEFAULT_TEMPLATES, deriveResult, emptyChecks, emptyFunctionalTest, functionalTestGate,
   normalizeFunctionalTest, validateInspection, type Asset, type CheckStatus, type Inspection,
 } from './index.ts';
 
@@ -34,19 +34,48 @@ test('Fail and Maintenance and Rectified need a remark', () => {
   }
 });
 
-test('functional test cannot pass when any check is Fail, but can with Maintenance', () => {
-  const failing = make({ 4: 'F' }, { 4: 'Grip torn' });
-  failing.functionalTest = { ...failing.functionalTest, required: 'yes', method: 'Push test', observations: 'ok', result: 'pass' };
-  failing.result.correctiveActionRef = 'CAR-1';
-  assert.ok(blocking(validateInspection(t, failing)).some((e) => e.path === 'functionalTest.result'));
-  assert.equal(normalizeFunctionalTest(failing.functionalTest, failing.checks).result, null);
+test('functional test: locked until every check is answered', () => {
+  const insp = make({});
+  insp.checks[4].status = null; // one check still unanswered
+  assert.equal(functionalTestGate(t, insp.checks).gate, 'locked');
+  // nothing about the test is asked yet, so only the unanswered check blocks submission
+  assert.deepEqual(blocking(validateInspection(t, insp)).map((e) => e.path), ['checks.5.status']);
+});
 
+test('functional test: not performed when any check is Fail', () => {
+  const failing = make({ 4: 'F' }, { 4: 'Grip torn' });
+  failing.functionalTest = { ...failing.functionalTest, required: 'yes', method: 'Push test', observations: 'ok', result: 'pass' }; // stale entry
+  assert.equal(functionalTestGate(t, failing.checks).gate, 'blocked');
+  const n = normalizeFunctionalTest(failing.functionalTest, failing.checks, t);
+  assert.equal(n.required, null);
+  assert.equal(n.result, 'na');
+  failing.functionalTest = n;
+  failing.result.correctiveActionRef = 'CAR-1';
+  assert.deepEqual(blocking(validateInspection(t, failing)), []); // can be submitted without the test
+  assert.equal(deriveResult(t, failing.checks, failing.functionalTest).testFailed, false);
+});
+
+test('functional test: opens when all checks are P or M, and then Pass / Fail applies', () => {
   const maint = make({ 4: 'M' }, { 4: 'Grip worn — replace at next service' });
+  assert.equal(functionalTestGate(t, maint.checks).gate, 'open');
+  maint.functionalTest = { ...emptyFunctionalTest() }; // answer still missing
+  assert.ok(blocking(validateInspection(t, maint)).some((e) => e.path === 'functionalTest.required'));
   maint.functionalTest = { ...maint.functionalTest, required: 'yes', method: 'Push test', observations: 'ok', result: 'pass' };
   assert.deepEqual(blocking(validateInspection(t, maint)), []);
   const d = deriveResult(t, maint.checks, maint.functionalTest);
   assert.equal(d.defectsIdentified, false);
   assert.deepEqual(d.maintenanceChecks, [4]);
+  // a failed test (checks all fine) takes the unit out of service
+  maint.functionalTest = { ...maint.functionalTest, result: 'fail', observations: 'Slipped on ramp' };
+  assert.equal(deriveResult(t, maint.checks, maint.functionalTest).outOfService, true);
+});
+
+test('functional test: a corrected Fail re-opens the test', () => {
+  const insp = make({ 4: 'F' }, { 4: 'x' });
+  insp.functionalTest = normalizeFunctionalTest(insp.functionalTest, insp.checks, t);
+  insp.checks[3].status = 'P';
+  const n = normalizeFunctionalTest(insp.functionalTest, insp.checks, t);
+  assert.equal(n.result, null); // must be decided again
 });
 
 test('safety-critical fail (wheel locks) takes the asset out of service and needs a CAR', () => {

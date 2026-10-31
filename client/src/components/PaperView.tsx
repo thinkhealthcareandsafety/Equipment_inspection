@@ -58,7 +58,7 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
         <tbody>
           <tr><th className="w-[38%] border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.required}</th>
             <td className="border border-slate-500 px-2 py-1"><span className="flex flex-wrap gap-4"><Box on={ft.required === 'yes'}>Yes</Box><Box on={ft.required === 'no'}>No</Box><span>Reference: {ft.reference}</span></span></td></tr>
-          <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.method}</th><td className="border border-slate-500 px-2 py-1">{ft.method}</td></tr>
+          <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.method}</th><td className="border border-slate-500 px-2 py-1">{ft.method || (ft.required === null && ft.result === 'na' ? 'Not performed — a check failed' : '')}</td></tr>
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.criteria}</th><td className="border border-slate-500 px-2 py-1">{[ft.criteria, ft.specifiedLoadKg != null && `${ft.specifiedLoadKg} kg`].filter(Boolean).join(' · ')}</td></tr>
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.observations}</th><td className="border border-slate-500 px-2 py-1">{[ft.observations, ft.actualLoadKg != null && `Applied ${ft.actualLoadKg} kg`].filter(Boolean).join(' · ')}</td></tr>
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.result}</th>

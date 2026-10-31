@@ -152,7 +152,7 @@ function drawCertificate(doc: jsPDF, insp: Inspection, ctx: PackContext) {
   const tiles: [string, string, [number, number, number]][] = [
     ['Pass', String(counts.P), GREEN], ['Fail', String(counts.F), counts.F ? RED : MUTED], ['Maintenance', String(counts.M), counts.M ? [3, 105, 161] : MUTED], ['N/A', String(counts.NA), MUTED],
     ['Rectified', String(counts.RECT), counts.RECT ? AMBER : MUTED],
-    ['Functional test', insp.functionalTest.required === 'no' ? 'Not req.' : insp.functionalTest.result === 'pass' ? 'Pass' : insp.functionalTest.result === 'fail' ? 'Fail' : '—',
+    ['Functional test', insp.functionalTest.required === 'no' ? 'Not req.' : insp.functionalTest.required === null && insp.functionalTest.result === 'na' ? 'Not run' : insp.functionalTest.result === 'pass' ? 'Pass' : insp.functionalTest.result === 'fail' ? 'Fail' : '—',
       insp.functionalTest.result === 'fail' ? RED : INK],
   ];
   const tw = CW / tiles.length;
@@ -270,7 +270,7 @@ function drawChecklist(doc: jsPDF, insp: Inspection, ctx: PackContext) {
   x = checkbox(doc, x - 2, y + frh / 2 + 1.3, ft.required === 'no', 'No', 2.8);
   doc.setFont('helvetica', 'normal'); doc.text(`Reference: ${ft.reference || ''}`, x, y + frh / 2 + 1.2);
   y += frh;
-  const na = ft.required === 'no' ? 'N/A — not required' : '';
+  const na = ft.required === 'no' ? 'N/A — not required' : ft.required === null && ft.result === 'na' ? 'Not performed — a check failed' : '';
   kvRow(doc, MX, y, flw, fvw, FUNCTIONAL_TEST_LABELS.method, ft.method || na, frh); y += frh;
   kvRow(doc, MX, y, flw, fvw, FUNCTIONAL_TEST_LABELS.criteria,
     [ft.criteria, ft.specifiedLoadKg != null ? `${ft.specifiedLoadKg} kg` : ''].filter(Boolean).join(' · ') || na, frh); y += frh;

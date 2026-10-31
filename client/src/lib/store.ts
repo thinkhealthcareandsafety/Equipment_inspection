@@ -101,7 +101,7 @@ export async function saveInspection(next: Inspection, user: User, extraEvent?: 
   if (!prev) throw new Error('Inspection not found on this device');
   if (prev.status === 'finalized') throw new Error('This inspection is finalised and locked');
   const t = await templateFor(next.templateId);
-  const functionalTest = normalizeFunctionalTest(next.functionalTest, next.checks);
+  const functionalTest = normalizeFunctionalTest(next.functionalTest, next.checks, t);
   let doc: Inspection = { ...next, functionalTest, updatedAt: new Date().toISOString() };
   doc.result = applyDerivedResult(t, doc);
   doc.events = diffEvents(prev, doc, user);

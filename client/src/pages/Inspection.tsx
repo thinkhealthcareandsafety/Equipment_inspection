@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import {
   addDays, blocking, canEdit, DEFAULT_TEMPLATES, deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, FUNCTIONAL_TEST_LABELS,
-  functionalTestBlockers, HEADER_FIELDS, RESULT_LABELS, STATUS_LABELS, validateInspection,
+  functionalTestGate, HEADER_FIELDS, RESULT_LABELS, STATUS_LABELS, validateInspection,
   type Asset, type CheckEntry, type CheckStatus, type ChecklistTemplate, type Inspection,
 } from '@think/shared';
 import { db } from '../lib/db.ts';
@@ -106,7 +106,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
   const err = (path: string) => (showErrors ? issues.find((i) => i.path === path && i.severity === 'error')?.message : undefined);
   const derived = deriveResult(t, insp.checks, insp.functionalTest);
   const answered = insp.checks.filter((c) => c.status).length;
-  const blockers = functionalTestBlockers(insp.checks);
+  const gate = functionalTestGate(t, insp.checks);
   const h = insp.header;
 
   const setCheck = (no: number, patch: Partial<CheckEntry>) => update((d) => ({ ...d, checks: d.checks.map((c) => (c.no === no ? { ...c, ...patch } : c)) }));
@@ -240,29 +240,37 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
             </div>
           </Card>
 
-          {/* Functional test */}
+          {/* Functional test: follows the checklist (locked → not performed if a check is Fail → open) */}
           <Card id="sec-test" className="p-4 sm:p-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="font-semibold">Functional test required?</div>
-              <div className="sm:w-56"><Segmented value={insp.functionalTest.required} onChange={(v) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, required: v } }))}
-                options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} /></div>
-            </div>
-            {err('functionalTest.required') && <div className="mt-1 text-xs font-medium text-rose-600">{err('functionalTest.required')}</div>}
-            {insp.functionalTest.required === 'yes' && (
-              <div className="mt-4 grid gap-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label={FUNCTIONAL_TEST_LABELS.method} error={err('functionalTest.method')}>
-                    <input className="input" list="test-methods" value={insp.functionalTest.method} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, method: e.target.value } }))} />
-                    <datalist id="test-methods"><option value="As per manufacturer instructions" /><option value="Push and brake test on ramp with occupant" /><option value="Assemble, lock and lift test" /></datalist>
-                  </Field>
-                  <Field label={FUNCTIONAL_TEST_LABELS.observations} error={err('functionalTest.observations')}>
-                    <input className="input" value={insp.functionalTest.observations} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, observations: e.target.value } }))} />
-                  </Field>
-                </div>
-                <Segmented size="lg" value={insp.functionalTest.result === 'na' ? null : insp.functionalTest.result} onChange={(v) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, result: v } }))}
-                  options={[{ value: 'pass', label: 'Pass', activeClass: STATUS_STYLE.P, disabled: blockers.length > 0 }, { value: 'fail', label: 'Fail', activeClass: STATUS_STYLE.F }]} />
-                {blockers.length > 0 && <div className="text-xs text-rose-700">Pass is locked because check {blockers.map((n) => `#${n}`).join(', ')} is F.</div>}
-                {err('functionalTest.result') && <div className="text-xs font-medium text-rose-600">{err('functionalTest.result')}</div>}
+            <div className="text-[19px] font-bold tracking-[-0.02em]">Functional test</div>
+            {gate.gate === 'locked' && (
+              <p className="mt-1 text-[15px] text-slate-500">Opens once all {t.checks.length} checks are answered. It can be recorded when every check is P or M.</p>
+            )}
+            {gate.gate === 'blocked' && (
+              <p className="mt-1 text-[15px] text-slate-500">Not performed: check {gate.failed.map((n) => `#${n}`).join(', ')} is Fail. Repair it and re-test.</p>
+            )}
+            {gate.gate === 'open' && (
+              <div className="mt-3">
+                <div className="mb-2 text-[15px] font-medium text-slate-700">Required by manufacturer / standard?</div>
+                <Segmented value={insp.functionalTest.required} onChange={(v) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, required: v } }))}
+                  options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} />
+                {err('functionalTest.required') && <div className="mt-1 text-xs font-medium text-rose-600">{err('functionalTest.required')}</div>}
+                {insp.functionalTest.required === 'yes' && (
+                  <div className="mt-4 grid gap-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label={FUNCTIONAL_TEST_LABELS.method} error={err('functionalTest.method')}>
+                        <input className="input" list="test-methods" value={insp.functionalTest.method} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, method: e.target.value } }))} />
+                        <datalist id="test-methods"><option value="As per manufacturer instructions" /><option value="Push and brake test on ramp with occupant" /><option value="Assemble, lock and lift test" /></datalist>
+                      </Field>
+                      <Field label={FUNCTIONAL_TEST_LABELS.observations} error={err('functionalTest.observations')}>
+                        <input className="input" value={insp.functionalTest.observations} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, observations: e.target.value } }))} />
+                      </Field>
+                    </div>
+                    <Segmented size="lg" value={insp.functionalTest.result === 'na' ? null : insp.functionalTest.result} onChange={(v) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, result: v } }))}
+                      options={[{ value: 'pass', label: 'Pass', activeClass: STATUS_STYLE.P }, { value: 'fail', label: 'Fail', activeClass: STATUS_STYLE.F }]} />
+                    {err('functionalTest.result') && <div className="text-xs font-medium text-rose-600">{err('functionalTest.result')}</div>}
+                  </div>
+                )}
               </div>
             )}
           </Card>

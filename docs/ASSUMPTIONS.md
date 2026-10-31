@@ -7,8 +7,8 @@ Each item names the decision taken and where to change it.
    - **F, M and RECT require a remark.**
    - M keeps the asset in service. The certificate reads "Fit for use — maintenance advised".
    - RECT counts as a defect that was identified and fixed on site.
-2. **Functional test Pass rule (client instruction).** The functional test can only be marked Pass when **no check is F**. M, NA and RECT do not block a Pass. If a check is changed to F after a Pass was recorded, the Pass is cleared and must be re-decided. This is enforced on the device and on the server.
-3. **"Test required by manufacturer / standard?"** This question is asked every time. If the answer is **No**, Pass/Fail is recorded as *Not applicable*. The wheelchair sample has "No" marked and also "Fail ✗ puncher"; the defect belongs against the check items, so the app records it there.
+2. **The functional test follows the checklist (client instruction).** It is locked until every check is answered. If any check is Fail it is not performed (recorded as Not applicable, and the inspection can be submitted without it). It opens only when every check is P or M (NA or Rectified also count), and then Pass / Fail applies. The rule is enforced on the device and on the server.
+3. **"Test required by manufacturer / standard?"** Once the test opens, this Yes / No question is asked first. If the answer is No, Pass / Fail is recorded as Not applicable.
 4. **Interval.** Inspections are **quarterly: next due = inspection date + 90 days** for all four types, as written on the wheelchair form and confirmed by the client. The interval is configurable per template.
 5. **Re-test window.** The default is 7 days (configurable per template). A re-test is a full inspection: a clean re-test clears open defects, restores service and resets the due date.
 6. **Safety-critical items** take the asset out of service on Fail:
