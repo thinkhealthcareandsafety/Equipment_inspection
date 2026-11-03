@@ -7,7 +7,7 @@ import { Link, useSearchParams } from 'react-router';
 import { ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
 import { EQUIPMENT_LABELS, formatDate, relativeDue, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
-import { buildReport, download, EMPTY_FILTERS, periodLabel, roundText, roundTone, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
+import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
 import { saveFile } from '../lib/files.ts';
 import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, InspectionStatusBadge, useToast } from '../components/ui.tsx';
@@ -45,7 +45,8 @@ export function Reports() {
   const k = report.kpis;
   const place = floorId ? `${bById.get(buildingId)?.name} · ${floorName(floorId)}` : buildingId ? `${bById.get(buildingId)?.name}, ${bById.get(buildingId)?.city}` : city || 'All sites';
   const done = [...report.inspections].sort((a, b) => b.header.inspectionDate.localeCompare(a.header.inspectionDate));
-  const oos = report.assets.filter((a) => a.status !== 'in_service');
+  const oos = report.assets.filter((a) => a.status === 'out_of_service');
+  const pctDone = k.assets ? Math.round((k.inDate / k.assets) * 100) : 0;
 
   // Next level to drill into, shown as tappable chips.
   const nextLevel: { id: string; label: string; count: number; patch: Record<string, string> }[] = !city
@@ -87,10 +88,10 @@ export function Reports() {
   };
 
   const tabs: { id: View; label: string; n?: number; tone?: string }[] = [
-    { id: 'summary', label: 'Summary' },
-    { id: 'due', label: 'To inspect', n: report.toInspect.length },
-    { id: 'oos', label: 'Out of service', n: oos.length, tone: oos.length ? 'text-rose-600' : '' },
-    { id: 'defects', label: 'Open defects', n: report.defects.length, tone: report.defects.length ? 'text-rose-600' : '' },
+    { id: 'summary', label: group === 'city' ? 'By city' : group === 'building' ? 'By site' : group === 'floor' ? 'By floor' : 'By equipment' },
+    { id: 'due', label: 'Still to inspect', n: report.toInspect.length },
+    { id: 'oos', label: 'Do not use', n: oos.length, tone: oos.length ? 'text-rose-600' : '' },
+    { id: 'defects', label: 'Problems found', n: report.defects.length, tone: report.defects.length ? 'text-rose-600' : '' },
     { id: 'done', label: 'Inspections done', n: done.length },
   ];
 
@@ -105,6 +106,11 @@ export function Reports() {
             {buildingId && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(floorId ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ floorId: '' })}>{bById.get(buildingId)?.name}</button></>}
             {floorId && <><ChevronRight className="h-4 w-4 text-slate-300" /><span className="font-medium">{floorName(floorId)}</span></>}
           </div>
+          <p data-summary className="mt-2 max-w-2xl text-[16px] leading-relaxed text-slate-600">
+            <strong className="text-slate-900">{k.inDate} of {k.assets} units</strong>{type ? ` (${EQUIPMENT_LABELS[type]})` : ''} are inspected and in date.{' '}
+            {report.toInspect.length > 0 ? <>{report.toInspect.length} still need inspecting.</> : <>Nothing is waiting.</>}
+            {oos.length > 0 && <> <span className="font-semibold text-rose-600">{oos.length} must not be used.</span></>}
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="dark" icon={<FileText className="h-4 w-4" />} disabled={busy} onClick={exportPdf}>PDF</Button>
@@ -113,26 +119,27 @@ export function Reports() {
       </div>
 
       {/* Filters: all taps, no dropdowns */}
-      <div className="mb-5 space-y-2.5">
+      <div className="mb-5 space-y-3">
         {nextLevel.length > 0 && (
-          <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
+          <FilterRow label={!city ? 'Pick a city' : !buildingId ? 'Pick a site' : 'Pick a floor'}>
             {nextLevel.map((x) => <Chip key={x.id} onClick={() => set(x.patch)} count={x.count}>{x.label}</Chip>)}
-          </div>
+          </FilterRow>
         )}
-        <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <FilterRow label="Period">
           {PERIODS.map((x) => <Chip key={x} active={period === x} onClick={() => set({ period: x === 'quarter' ? '' : x })}>{PERIOD_SHORT[x]}</Chip>)}
-          <span className="mx-1 w-px shrink-0 bg-slate-200" />
-          <Chip active={!type} onClick={() => set({ type: '' })}>All equipment</Chip>
+        </FilterRow>
+        <FilterRow label="Equipment">
+          <Chip active={!type} onClick={() => set({ type: '' })}>All</Chip>
           {(Object.keys(EQUIPMENT_LABELS) as EquipmentType[]).map((t) => <Chip key={t} active={type === t} onClick={() => set({ type: t })}>{EQUIPMENT_LABELS[t]}</Chip>)}
-        </div>
+        </FilterRow>
       </div>
 
-      {/* Four numbers that matter */}
+      {/* Four numbers, each saying what it means. Tap one to see the list behind it. */}
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Assets" value={k.assets} sub={place} />
-        <Kpi label="Round progress" value={k.inDate === 0 ? '—' : `${Math.round(k.compliance)}%`} sub={roundText(k)} tone={roundTone(k) === 'neutral' ? undefined : roundTone(k) === 'red' ? 'red' : 'green'} />
-        <Kpi label={`Inspected · ${PERIOD_SHORT[period].toLowerCase()}`} value={k.inspectedInPeriod} sub={k.passRate == null ? 'No inspections yet' : `${k.passRate}% passed first time`} />
-        <Kpi label="Open defects" value={k.openDefects} sub={`${k.outOfService} out of service`} tone={k.openDefects ? 'red' : 'green'} />
+        <Kpi label="Inspected" value={<>{k.inDate}<span className="text-[17px] font-medium text-slate-400"> of {k.assets}</span></>} sub={`${pctDone}% · in the last 90 days`} bar={pctDone} onClick={() => set({ view: '' })} active={view === 'summary'} />
+        <Kpi label="Still to inspect" value={report.toInspect.length} sub="Never inspected, overdue or due soon" tone={report.toInspect.length ? 'amber' : 'green'} onClick={() => set({ view: 'due' })} active={view === 'due'} />
+        <Kpi label="Do not use" value={oos.length} sub="Out of service until a re-test passes" tone={oos.length ? 'red' : 'green'} onClick={() => set({ view: 'oos' })} active={view === 'oos'} />
+        <Kpi label="Problems found" value={report.defects.length} sub={report.defects.length ? `${k.safetyCritical} on safety checks` : 'No open problems'} tone={report.defects.length ? 'red' : 'green'} onClick={() => set({ view: 'defects' })} active={view === 'defects'} />
       </div>
 
       <div className="scrollbar-none -mx-4 mb-3 flex gap-1 overflow-x-auto border-b border-slate-200 px-4 sm:mx-0 sm:px-0">
@@ -150,11 +157,9 @@ export function Reports() {
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
                 <th className="px-4 py-3 sm:px-5">{group === 'city' ? 'City' : group === 'building' ? 'Site' : group === 'floor' ? 'Floor' : 'Equipment'}</th>
-                <th className="px-3 py-3 text-right">Assets</th>
-                <th className="hidden px-3 py-3 text-right sm:table-cell">Inspected</th>
-                <th className="px-3 py-3 text-right">Defects</th>
-                <th className="hidden px-3 py-3 text-right sm:table-cell">Overdue</th>
-                <th className="w-36 px-4 py-3 sm:w-48 sm:px-5">Inspected</th>
+                <th className="w-40 px-3 py-3 sm:w-56">Inspected</th>
+                <th className="px-3 py-3 text-right">Do not use</th>
+                <th className="px-4 py-3 text-right sm:px-5">Problems</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
                 {report.groups.map((g) => {
@@ -162,11 +167,9 @@ export function Reports() {
                   return (
                     <tr key={g.key} className="cursor-pointer hover:bg-slate-50" onClick={() => set(drill)}>
                       <td className="px-4 py-3 font-medium sm:px-5"><span className="inline-flex items-center gap-1">{g.label}<ChevronRight className="h-4 w-4 text-slate-300" /></span></td>
-                      <td className="px-3 py-3 text-right tabular">{g.assets}</td>
-                      <td className="hidden px-3 py-3 text-right tabular sm:table-cell">{g.inspected}</td>
-                      <td className={cx('px-3 py-3 text-right tabular', g.openDefects > 0 && 'font-semibold text-rose-600')}>{g.openDefects}</td>
-                      <td className={cx('hidden px-3 py-3 text-right tabular sm:table-cell', g.overdue > 0 && 'font-semibold text-rose-600')}>{g.overdue}</td>
-                      <td className="px-4 py-3 sm:px-5"><div className="flex items-center gap-2"><Bar value={g.compliance} tone="brand" /><span className="w-14 text-right text-xs tabular text-slate-500">{g.inDate}/{g.assets}</span></div></td>
+                      <td className="px-3 py-3"><div className="flex items-center gap-2"><Bar value={g.compliance} tone="brand" /><span className="shrink-0 text-xs tabular text-slate-500">{g.inDate} of {g.assets}</span></div></td>
+                      <td className={cx('px-3 py-3 text-right tabular', g.outOfService > 0 ? 'font-semibold text-rose-600' : 'text-slate-400')}>{g.outOfService}</td>
+                      <td className={cx('px-4 py-3 text-right tabular sm:px-5', g.openDefects > 0 ? 'font-semibold text-rose-600' : 'text-slate-400')}>{g.openDefects}</td>
                     </tr>
                   );
                 })}
@@ -176,9 +179,9 @@ export function Reports() {
         ))}
 
         {view === 'due' && <AssetList assets={report.toInspect} empty="Everything here is inspected and in date" right={(a) => <DueBadge nextDue={a.nextDueDate} />} sub={(a) => `${bById.get(a.buildingId)?.name}${a.floorId ? ` · ${floorName(a.floorId)}` : ''} · last ${formatDate(a.lastInspectionDate)}`} />}
-        {view === 'oos' && <AssetList assets={oos} empty="Every asset is in service" right={(a) => <AssetStatusBadge status={a.status} />} sub={(a) => `${bById.get(a.buildingId)?.name} · ${a.statusReason ?? ''}`} />}
+        {view === 'oos' && <AssetList assets={oos} empty="Every unit can be used" right={(a) => <AssetStatusBadge status={a.status} />} sub={(a) => `${bById.get(a.buildingId)?.name} · ${a.statusReason ?? ''}`} />}
 
-        {view === 'defects' && (report.defects.length === 0 ? <Empty title="No open defects" /> : (
+        {view === 'defects' && (report.defects.length === 0 ? <Empty title="No open problems" /> : (
           <ul className="divide-y divide-slate-100">
             {report.defects.map((d) => (
               <li key={`${d.inspectionId}-${d.checkNo}`}><Link to={`/assets/${d.asset.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 sm:px-5">
@@ -212,18 +215,28 @@ export function Reports() {
           </ul>
         ))}
       </Card>
-      <p className="mt-3 text-xs text-slate-500">{periodLabel(period)}. "Inspected" means checked within the current 90-day cycle. PDF gives the full report for {place}; Excel exports the list on screen.</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-slate-500">"Inspected" means checked in the last 90 days. "Inspections done" lists those carried out in {periodLabel(period)}. <strong>PDF</strong> is the full report for {place} to send the client; <strong>Excel</strong> downloads the list on screen.</p>
     </>
   );
 }
 
-function Kpi({ label, value, sub, tone }: { label: string; value: React.ReactNode; sub: string; tone?: 'green' | 'amber' | 'red' }) {
+function Kpi({ label, value, sub, tone, bar, onClick, active }: { label: string; value: React.ReactNode; sub: string; tone?: 'green' | 'amber' | 'red'; bar?: number; onClick: () => void; active: boolean }) {
   return (
-    <Card className="p-4">
-      <div className="text-[13px] text-slate-500">{label}</div>
+    <button onClick={onClick} className={cx('card p-4 text-left transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lift active:scale-[.98]', active && 'ring-2 ring-brand-500/60')}>
+      <div className="text-[14px] font-semibold text-slate-700">{label}</div>
       <div className={cx('mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] tabular', tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{value}</div>
-      <div className="mt-0.5 truncate text-xs text-slate-500">{sub}</div>
-    </Card>
+      {bar != null && <div className="mt-2"><Bar value={bar} tone="brand" /></div>}
+      <div className="mt-1.5 text-[13px] leading-snug text-slate-500">{sub}</div>
+    </button>
+  );
+}
+
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-slate-400">{label}</div>
+      <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">{children}</div>
+    </div>
   );
 }
 

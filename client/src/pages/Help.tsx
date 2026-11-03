@@ -42,18 +42,18 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
 function Key({ code, word, cls }: { code: string; word: string; cls: string }) {
   return (
     <span className={cx('inline-flex h-[54px] w-[62px] shrink-0 flex-col items-center justify-center rounded-[12px] leading-none', cls)}>
-      <span className="text-[17px] font-semibold">{code}</span>
-      <span className="mt-1 text-[11px] font-medium opacity-90">{word}</span>
+      {code && <span className="text-[17px] font-semibold">{code}</span>}
+      <span className={cx('text-center font-semibold', code ? 'mt-1 text-[11px]' : 'px-1 text-[12px] leading-tight')}>{word}</span>
     </span>
   );
 }
 
 const BUTTONS: { code: string; word: string; cls: string; when: string; note?: string }[] = [
-  { code: 'P', word: 'Pass', cls: 'bg-emerald-600 text-white', when: 'It works as it should and is safe to use.' },
-  { code: 'F', word: 'Fail', cls: 'bg-rose-600 text-white', when: 'It does not work or is not safe.', note: 'Write what is wrong. Add a photo if you can.' },
-  { code: 'M', word: 'Service', cls: 'bg-sky-600 text-white', when: 'It works, but needs maintenance soon (loose, worn, dirty).', note: 'Write what needs doing.' },
-  { code: 'N/A', word: 'N/A', cls: 'bg-slate-600 text-white', when: 'This check does not apply to this unit, for example no restraints fitted. Under More.', note: 'Only some checks allow it.' },
-  { code: 'R', word: 'Fixed', cls: 'bg-amber-500 text-white', when: 'It was wrong and you fixed it on the spot. Under More.', note: 'Write what you did.' },
+  { code: '✓', word: 'OK', cls: 'bg-emerald-600 text-white', when: 'It works as it should and is safe to use.' },
+  { code: '✗', word: 'Problem', cls: 'bg-rose-600 text-white', when: 'It does not work or is not safe.', note: 'Write what is wrong. Add a photo if you can.' },
+  { code: '', word: 'Service needed', cls: 'bg-sky-600 text-white', when: 'Under More. It works, but needs maintenance soon (loose, worn, dirty).', note: 'Write what needs doing.' },
+  { code: '', word: 'N/A', cls: 'bg-slate-600 text-white', when: 'Under More. This check does not apply to this unit, for example no restraints fitted.', note: 'Only some checks allow it.' },
+  { code: '', word: 'Fixed now', cls: 'bg-amber-500 text-white', when: 'Under More. It was wrong and you fixed it on the spot.', note: 'Write what you did.' },
 ];
 
 export function Help() {
@@ -74,17 +74,17 @@ export function Help() {
         <Card className="overflow-hidden">
           <ol className="divide-y divide-slate-100">
             <Step n={1} title="Open the unit">
-              <p>Point the phone camera at the unit's <strong>QR label</strong>. It opens the unit straight away.</p>
-              <p>No label? Tap <ScanLine className="inline h-4 w-4 -translate-y-px" /> <strong>Scan</strong> at the top, or go to <strong>Sites</strong>, pick the site and tap the unit. You can also type the tag in the search on Home.</p>
+              <p>On Home tap <strong>Pick a site</strong>, choose the site, then tap the unit. Or type its tag (for example <span className="whitespace-nowrap">"NKP WC 004"</span>) in the search on Home.</p>
+              <p>Once QR labels are stuck on the units (see <strong>QR labels</strong> below), point the phone camera at the label instead, or tap <ScanLine className="inline h-4 w-4 -translate-y-px" /> <strong>Scan</strong>.</p>
             </Step>
             <Step n={2} title="Tap Start inspection">
               <p>Site, date, your name and the next due date are already filled in. Tap the <strong>floor</strong> the unit is on. If the app asks for the location, type where it is (for example "10th Floor · lift lobby").</p>
             </Step>
             <Step n={3} title="Answer every check">
-              <p>Tap <strong>Pass</strong>, <strong>Fail</strong> or <strong>Service</strong> for each line. If everything is fine, answer the ones that are not, then tap <strong>Rest pass</strong> to mark the others Pass.</p>
+              <p>Tap <strong>OK</strong> or <strong>Problem</strong> for each line. If most lines are fine, mark the problems first, then tap <strong>Rest OK</strong> to mark all the others OK.</p>
             </Step>
             <Step n={4} title="If something is wrong, say what">
-              <p>After <strong>Fail</strong> or <strong>Service</strong>, type what is wrong and take a photo. The button at the bottom always shows what is still missing; tap it to jump there.</p>
+              <p>After <strong>Problem</strong>, type what is wrong and take a photo. The button at the bottom always shows what is still missing; tap it to jump there.</p>
             </Step>
             <Step n={5} title="Sign and submit">
               <p>Tap <PenLine className="inline h-4 w-4 -translate-y-px" /> <strong>Sign &amp; submit</strong> and sign with your finger. The phone remembers your signature for next time.</p>
@@ -98,7 +98,7 @@ export function Help() {
         <Card className="overflow-hidden">
           <div className="divide-y divide-slate-100">
             {BUTTONS.map((b) => (
-              <div key={b.code} className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
+              <div key={b.word} className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
                 <Key code={b.code} word={b.word} cls={b.cls} />
                 <div className="min-w-0 text-[15px] leading-relaxed">
                   <div className="text-slate-800">{b.when}</div>
@@ -108,11 +108,11 @@ export function Help() {
             ))}
             <div className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
               <span className="inline-flex h-[54px] w-[62px] shrink-0 flex-col items-center justify-center rounded-[12px] bg-black/[.05] text-slate-500"><Ellipsis className="h-5 w-5" /><span className="mt-0.5 text-[10px] font-medium">More</span></span>
-              <div className="text-[15px] leading-relaxed text-slate-800">Shows N/A and Fixed.</div>
+              <div className="text-[15px] leading-relaxed text-slate-800">Shows Service needed, N/A and Fixed now.</div>
             </div>
             <div className="flex items-center gap-4 px-4 py-3.5 sm:px-5">
               <span className="grid h-[54px] w-[62px] shrink-0 place-items-center rounded-[12px] bg-rose-50"><ShieldAlert className="h-6 w-6 text-rose-500" /></span>
-              <div className="text-[15px] leading-relaxed text-slate-800"><strong>Safety-critical check.</strong> A Fail here takes the unit out of service.</div>
+              <div className="text-[15px] leading-relaxed text-slate-800"><strong>Safety-critical check.</strong> A Problem here takes the unit out of service.</div>
             </div>
           </div>
         </Card>
@@ -122,17 +122,18 @@ export function Help() {
         <Card className="space-y-4 p-4 text-[15px] leading-relaxed text-slate-700 sm:p-5">
           <div className="flex gap-3 rounded-2xl bg-rose-50 p-4 text-rose-900 ring-1 ring-rose-100">
             <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
-            <div><strong>Fail on a safety-critical check (shield):</strong> when you submit, the unit becomes <strong>Out of service</strong>. Put a DO NOT USE tag on it. It stays red on Home and in Reports until a re-test passes.</div>
+            <div><strong>Problem on a safety-critical check (shield):</strong> when you submit, the unit becomes <strong>Out of service</strong>. Put a DO NOT USE tag on it. It stays red on Home and in Reports until a re-test passes.</div>
           </div>
-          <p><strong>Fail on any other check:</strong> the unit stays in service but needs a re-test.</p>
-          <p><strong>Work order / CAR number:</strong> the app asks for it at the bottom when something failed. Use the job number for the repair.</p>
-          <p><strong>Functional test:</strong> opens once every check is answered. Choose whether the manufacturer requires one; if yes, record how you tested it and Pass or Fail.</p>
+          <p><strong>Problem on any other check:</strong> the unit stays in service but needs a re-test.</p>
+          <p><strong>Work order / CAR number:</strong> filled in for you when there is a problem. Replace it with the repair job number if there is one.</p>
+          <p><strong>Functional test:</strong> appears once every line is answered. Say whether the manufacturer requires one; if yes, write how you tested it and whether it passed.</p>
           <p><strong>After the repair:</strong> open the unit and tap <strong>Start re-test</strong>. A passing re-test puts it back in service.</p>
         </Card>
       </Section>
 
       <Section id="qr" title="QR labels">
         <Card className="space-y-3 p-4 text-[15px] leading-relaxed text-slate-700 sm:p-5">
+          <p className="rounded-2xl bg-brand-500/[.08] p-3 text-slate-800">The units do not have QR labels yet. You print them from the app once and stick one on each unit. Until then, open units from <strong>Sites</strong> or the search on Home; nothing else changes.</p>
           <p><strong>Print:</strong> open a site and tap <Printer className="inline h-4 w-4 -translate-y-px" /> <strong>QR labels</strong>. You get a PDF with 21 labels per A4 page, sized for standard 63.5 × 38.1 mm sticker sheets (often sold as "L7160"). Plain paper and clear tape also work. To print just a few, filter the site's list first. A single unit's label is on that unit's page (Label PDF).</p>
           <p><strong>Stick:</strong> on the frame, where hands and cleaning will not rub it off and where the camera can reach.</p>
           <p><strong>Scan:</strong> the phone's normal camera opens the unit. A new phone asks for the access code once.</p>

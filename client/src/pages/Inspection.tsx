@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  ArrowRight, Check, ChevronLeft, CloudOff, Download, Ellipsis, Eye, History, Lock, PenLine, ShieldAlert, Undo2,
+  ArrowRight, Check, ChevronLeft, CloudOff, Download, Ellipsis, Eye, History, Lock, PenLine, ShieldAlert, Undo2, X,
 } from 'lucide-react';
 import {
   addDays, blocking, canEdit, DEFAULT_TEMPLATES, deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, FUNCTIONAL_TEST_LABELS,
@@ -26,8 +26,12 @@ import { FloorsSheet } from '../components/FloorTools.tsx';
 import { PersonPicker, PhotoStrip, SignaturePad } from '../components/Inputs.tsx';
 import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, haptic, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
 
-/** Plain words under each letter, so nobody has to learn the paper form's codes. */
-const STATUS_WORD: Record<CheckStatus, string> = { P: 'Pass', F: 'Fail', M: 'Service', NA: 'N/A', RECT: 'Fixed' };
+/** Plain words instead of the paper form's codes. The stored values (and the certificate) keep P / F / M / NA / RECT. */
+const STATUS_WORD: Record<CheckStatus, string> = { P: 'OK', F: 'Problem', M: 'Service', NA: 'N/A', RECT: 'Fixed' };
+const STATUS_HINT: Record<CheckStatus, string> = {
+  P: 'Works as it should', F: 'Does not work or is unsafe', M: 'Works, but needs maintenance soon',
+  NA: 'Does not apply to this unit', RECT: 'Was wrong, fixed on the spot',
+};
 
 const STATUS_STYLE: Record<CheckStatus, string> = {
   P: 'bg-emerald-600 text-white ring-emerald-600',
@@ -118,7 +122,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
     const n = before.filter((c) => !c.status).length;
     if (!n) return;
     update((d) => ({ ...d, checks: d.checks.map((c) => (c.status ? c : { ...c, status: 'P' })) }));
-    toast(`${n} check${n > 1 ? 's' : ''} marked Pass. Tap any row to change it.`, 'info');
+    toast(`${n} check${n > 1 ? 's' : ''} marked OK. Tap any row to change it.`, 'info');
   };
   const onPhoto = async (no: number | null, blob: Blob) => {
     await flush();
@@ -145,6 +149,16 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
     const a = await db.assets.get(insp.assetId);
     setDone({ next: a ? await nextDueOnFloor(a) : null });
   };
+
+  // A problem needs a work-order (CAR) number on the certificate. Fill one in so nobody has to invent it;
+  // the inspector can replace it with the real job number.
+  const needsCar = derived.failedChecks.length > 0 || derived.testFailed;
+  useEffect(() => {
+    if (editable && needsCar && !insp.result.correctiveActionRef) {
+      const ref = `CAR-${(h.inspectionDate || '').replace(/-/g, '').slice(2)}-${h.equipmentAssetId}`;
+      update((d) => ({ ...d, result: { ...d.result, correctiveActionRef: ref } }));
+    }
+  }, [needsCar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startNext = async (a: Asset) => { setDone(null); nav(`/inspections/${await openOrCreateInspection(a, user)}`, { replace: true }); };
 
@@ -231,9 +245,9 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
             <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-black/10 px-4 py-3 sm:px-5">
               <div>
                 <div className="text-[19px] font-bold tracking-[-0.02em]">Checks</div>
-                <div className="text-[13px] text-slate-500">Pass · Fail · Service needed · <span className="whitespace-nowrap">More: N/A or Fixed</span></div>
+                <div className="text-[13px] text-slate-500">OK or Problem for each line. <span className="whitespace-nowrap">More: Service, N/A, Fixed</span></div>
               </div>
-              <Button size="sm" variant="dark" icon={<Check className="h-4 w-4" />} disabled={answered === t.checks.length} onClick={allPass}>Rest pass</Button>
+              <Button size="sm" variant="dark" icon={<Check className="h-4 w-4" />} disabled={answered === t.checks.length} onClick={allPass}>Rest OK</Button>
             </div>
             <div className="divide-y divide-slate-100">
               {t.checks.map((item) => (
@@ -290,7 +304,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
                 </button>
               </div>
               {(derived.failedChecks.length > 0 || derived.testFailed) && (
-                <div className="mt-4"><Field label={RESULT_LABELS.correctiveActionRef} required error={err('result.correctiveActionRef')}>
+                <div className="mt-4"><Field label={RESULT_LABELS.correctiveActionRef} required hint="Filled in for you. Replace it with the repair job number if there is one." error={err('result.correctiveActionRef')}>
                   <input className="input" placeholder="Work order / CAR number" value={insp.result.correctiveActionRef} onChange={(e) => update((d) => ({ ...d, result: { ...d.result, correctiveActionRef: e.target.value } }))} />
                 </Field></div>
               )}
@@ -352,14 +366,21 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
   item: ChecklistTemplate['checks'][number]; e: CheckEntry; onSet: (p: Partial<CheckEntry>) => void; onPhoto: (b: Blob) => void;
   statusError?: string; remarkError?: string;
 }) {
-  const [more, setMore] = useState(e.status === 'NA' || e.status === 'RECT');
+  const [more, setMore] = useState(e.status === 'M' || e.status === 'NA' || e.status === 'RECT');
   const needsRemark = e.status === 'F' || e.status === 'M' || e.status === 'RECT';
-  const btn = (s: CheckStatus, disabled = false) => (
-    <button key={s} type="button" disabled={disabled} onClick={() => { haptic(); onSet({ status: s }); }} title={STATUS_LABELS[s]}
-      className={cx('flex h-[54px] min-w-11 flex-1 flex-col items-center justify-center rounded-[12px] px-1 leading-none transition duration-150 active:scale-95 disabled:opacity-30',
-        e.status === s ? STATUS_STYLE[s] : 'bg-black/[.05] text-slate-700 hover:bg-black/[.08]')}>
-      <span className="text-[17px] font-semibold">{s === 'RECT' ? 'R' : s}</span>
-      <span className={cx('mt-1 text-[11px] font-medium', e.status === s ? 'text-white/90' : 'text-slate-500')}>{STATUS_WORD[s]}</span>
+  // Two big answers cover almost every line; the rarer ones sit under More.
+  const big = (st: 'P' | 'F') => (
+    <button key={st} type="button" onClick={() => { haptic(); onSet({ status: st }); }} title={STATUS_HINT[st]} aria-pressed={e.status === st}
+      className={cx('flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[12px] px-2 text-[17px] font-semibold transition duration-150 active:scale-95',
+        e.status === st ? STATUS_STYLE[st] : 'bg-black/[.05] text-slate-700 hover:bg-black/[.08]')}>
+      {st === 'P' ? <Check className="h-5 w-5" strokeWidth={2.6} /> : <X className="h-5 w-5" strokeWidth={2.6} />}{STATUS_WORD[st]}
+    </button>
+  );
+  const small = (st: 'M' | 'NA' | 'RECT', disabled = false) => (
+    <button key={st} type="button" disabled={disabled} onClick={() => { haptic(); onSet({ status: st }); }} title={STATUS_HINT[st]} aria-pressed={e.status === st}
+      className={cx('h-10 flex-1 rounded-[10px] px-2 text-[14px] font-semibold transition duration-150 active:scale-95 disabled:opacity-30',
+        e.status === st ? STATUS_STYLE[st] : 'bg-black/[.05] text-slate-600 hover:bg-black/[.08]')}>
+      {st === 'M' ? 'Service needed' : st === 'NA' ? 'N/A' : 'Fixed now'}
     </button>
   );
   return (
@@ -372,13 +393,16 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
             {item.safetyCritical && <ShieldAlert className="ml-1 inline h-4 w-4 -translate-y-px text-rose-500" aria-label="Safety-critical" />}
           </div>
         </div>
-        <div className="flex gap-1.5 pl-8 sm:w-72 sm:pl-0">
-          {btn('P')}{btn('F')}{btn('M')}
-          {more ? <>{btn('NA', !item.allowNA)}{btn('RECT')}</> : (
-            <button type="button" onClick={() => setMore(true)} className="flex h-[54px] w-12 shrink-0 flex-col items-center justify-center rounded-[12px] bg-black/[.05] text-slate-500 hover:bg-black/[.08] active:scale-95" title="Not applicable, or fixed on the spot">
-              <Ellipsis className="h-5 w-5" /><span className="mt-0.5 text-[10px] font-medium">More</span>
-            </button>
-          )}
+        <div className="pl-8 sm:w-80 sm:pl-0">
+          <div className="flex gap-2">
+            {big('P')}{big('F')}
+            {!more && (
+              <button type="button" onClick={() => setMore(true)} className="flex h-[52px] w-12 shrink-0 flex-col items-center justify-center rounded-[12px] bg-black/[.05] text-slate-500 hover:bg-black/[.08] active:scale-95" title="Service needed, not applicable, or fixed on the spot">
+                <Ellipsis className="h-5 w-5" /><span className="mt-0.5 text-[10px] font-medium">More</span>
+              </button>
+            )}
+          </div>
+          {more && <div className="mt-2 flex gap-1.5">{small('M')}{small('NA', !item.allowNA)}{small('RECT')}</div>}
         </div>
       </div>
       {item.measurement && (
@@ -391,7 +415,7 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
       {(needsRemark || e.photoIds.length > 0) && (
         <div className="mt-3 space-y-2 pl-8">
           <input autoFocus={needsRemark && !e.remark} className={cx('input', remarkError && 'input-error')} value={e.remark} onChange={(ev) => onSet({ remark: ev.target.value })}
-            placeholder={e.status === 'F' ? 'What is wrong? (required)' : e.status === 'M' ? 'What maintenance is needed? (required)' : e.status === 'RECT' ? 'What did you fix? (required)' : 'Remark'} />
+            placeholder={e.status === 'F' ? 'What is the problem? (required)' : e.status === 'M' ? 'What maintenance is needed? (required)' : e.status === 'RECT' ? 'What did you fix? (required)' : 'Remark'} />
           <PhotoStrip photoIds={e.photoIds} onAdd={onPhoto} onRemove={(id) => onSet({ photoIds: e.photoIds.filter((p) => p !== id) })} />
           {e.status === 'F' && item.safetyCritical && <div className="text-xs font-medium text-rose-700">Safety-critical — the asset goes out of service when you submit.</div>}
         </div>

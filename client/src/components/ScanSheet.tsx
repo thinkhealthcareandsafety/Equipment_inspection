@@ -103,6 +103,9 @@ function Scanner({ onClose }: { onClose: () => void }) {
         <input id="scan-tag" className="input flex-1 font-mono uppercase" placeholder="Or type the tag, e.g. JLL-NKP-WC-004" value={tag} onChange={(e) => setTag(e.target.value)} autoCapitalize="characters" />
         <Button type="submit" variant="primary" disabled={!tag.trim()}>Open</Button>
       </form>
+      <button type="button" onClick={() => { onClose(); nav('/sites'); }} className="w-full rounded-[14px] bg-black/[.05] py-3 text-[16px] font-semibold text-brand-700 transition hover:bg-black/[.08] active:scale-[.98]">
+        No label on the unit? Pick it from its site
+      </button>
     </div>
   );
 }
