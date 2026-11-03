@@ -16,12 +16,14 @@ export async function loadTemplate(q: Queryable, id: EquipmentType, version: num
 }
 
 // Signing is final when no review is needed: a draft goes straight to 'finalized'.
-const SIGN = REVIEW_REQUIRED ? 'submitted' : 'finalized';
+// 'submitted' stays accepted so phones still on an older version (or with work queued offline)
+// sync without errors; those land in "Waiting for approval".
+const SIGN = REVIEW_REQUIRED ? ['submitted'] : ['submitted', 'finalized'];
 const ALLOWED: Record<string, Record<string, string[]>> = {
   // role → from-status → allowed to-statuses
-  inspector: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN] },
-  reviewer: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN], submitted: ['finalized', 'returned'] },
-  admin: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN], submitted: ['finalized', 'returned'] },
+  inspector: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN] },
+  reviewer: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN], submitted: ['finalized', 'returned'] },
+  admin: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN], submitted: ['finalized', 'returned'] },
 };
 
 /**
