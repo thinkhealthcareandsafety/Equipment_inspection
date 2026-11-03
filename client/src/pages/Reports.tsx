@@ -4,18 +4,19 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { ChevronRight, FileSpreadsheet, FileText } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, FileSpreadsheet, FileText, Layers, MapPin } from 'lucide-react';
 import { EQUIPMENT_LABELS, formatDate, relativeDue, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
 import { saveFile } from '../lib/files.ts';
-import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, InspectionStatusBadge, useToast } from '../components/ui.tsx';
+import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, cx, DueBadge, Empty, EquipmentAvatar, InspectionStatusBadge, SearchField, Segmented, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
 
 type View = 'summary' | 'due' | 'oos' | 'defects' | 'done';
 const PERIODS: Period[] = ['quarter', 'last_quarter', 'year', 'all'];
 const PERIOD_SHORT: Record<Period, string> = { quarter: 'This quarter', last_quarter: 'Last quarter', year: 'This year', all: 'All time' };
+const PERIOD_TINY: Record<Period, string> = { quarter: 'This qtr', last_quarter: 'Last qtr', year: 'This year', all: 'All time' };
 
 export function Reports() {
   const data = useAllData();
@@ -23,6 +24,7 @@ export function Reports() {
   const toast = useToast();
   const [params, setParams] = useSearchParams();
   const [busy, setBusy] = useState(false);
+  const [picker, setPicker] = useState<'place' | 'type' | null>(null);
   const p = (k: string) => params.get(k) ?? '';
   const city = p('city'), buildingId = p('buildingId'), floorId = p('floorId');
   const type = p('type') as EquipmentType | '';
@@ -47,16 +49,6 @@ export function Reports() {
   const done = [...report.inspections].sort((a, b) => b.header.inspectionDate.localeCompare(a.header.inspectionDate));
   const oos = report.assets.filter((a) => a.status === 'out_of_service');
   const pctDone = k.assets ? Math.round((k.inDate / k.assets) * 100) : 0;
-
-  // Next level to drill into, shown as tappable chips.
-  const nextLevel: { id: string; label: string; count: number; patch: Record<string, string> }[] = !city
-    ? [...new Set(data.buildings.map((b) => b.city))].sort().map((c) => ({ id: c, label: c, count: data.assets.filter((a) => bById.get(a.buildingId)?.city === c).length, patch: { city: c } }))
-    : !buildingId
-      ? data.buildings.filter((b) => b.city === city).sort((a, b) => a.name.localeCompare(b.name)).map((b) => ({ id: b.id, label: b.name, count: data.assets.filter((a) => a.buildingId === b.id).length, patch: { buildingId: b.id } }))
-      : !floorId
-        ? [...data.floors.filter((f) => f.buildingId === buildingId).sort((a, b) => a.sortOrder - b.sortOrder).map((f) => ({ id: f.id, label: f.name, count: data.assets.filter((a) => a.floorId === f.id).length, patch: { floorId: f.id } })),
-          { id: '__none', label: 'Unassigned', count: data.assets.filter((a) => a.buildingId === buildingId && !a.floorId).length, patch: { floorId: '__none' } }].filter((x) => x.count > 0)
-        : [];
 
   const fileBase = `${place.replace(/[^\w]+/g, '-')}_${period}_${todayISO()}`;
   const exportPdf = async () => {
@@ -95,60 +87,100 @@ export function Reports() {
     { id: 'done', label: 'Inspections done', n: done.length },
   ];
 
+  const ringPct = pctDone;
+  const R = 54, C = 2 * Math.PI * R;
+  const stat = (id: View, label: string, short: string, value: number, hint: string, tone: 'amber' | 'red' | 'slate') => (
+    <button key={id} type="button" onClick={() => set({ view: view === id ? '' : id })}
+      className={cx('group flex min-w-0 flex-col rounded-[16px] px-3 py-3 text-left transition duration-150 hover:bg-black/[.035] active:scale-[.98] sm:px-4',
+        view === id && 'bg-black/[.045]')}>
+      <span className="text-[13px] font-medium text-slate-500"><span className="sm:hidden">{short}</span><span className="hidden sm:inline">{label}</span></span>
+      <span className={cx('mt-1 text-[32px] font-bold leading-none tracking-[-0.03em] tabular sm:text-[36px]',
+        value === 0 ? 'text-slate-300' : tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : 'text-slate-900')}>{value}</span>
+      <span className="mt-2 hidden text-[12.5px] leading-snug text-slate-500 sm:line-clamp-2">{hint}</span>
+    </button>
+  );
+
   return (
-    <>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-5xl">
+      {/* Title, scope in words, export */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
+          <div className="text-[13px] font-semibold uppercase tracking-[0.05em] text-slate-500">{periodLabel(period)}</div>
           <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">Reports</h1>
-          <div className="mt-1 flex flex-wrap items-center gap-1 text-[15px]">
-            <button className={cx(city ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ city: '', buildingId: '', floorId: '' })}>All sites</button>
-            {city && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(buildingId ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ buildingId: '', floorId: '' })}>{city}</button></>}
-            {buildingId && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(floorId ? 'text-brand-700 hover:underline' : 'font-medium')} onClick={() => set({ floorId: '' })}>{bById.get(buildingId)?.name}</button></>}
-            {floorId && <><ChevronRight className="h-4 w-4 text-slate-300" /><span className="font-medium">{floorName(floorId)}</span></>}
+          <div className="mt-1 flex flex-wrap items-center gap-1 text-[15px] text-slate-500">
+            <button className={cx(city ? 'text-brand-700 hover:underline' : 'font-medium text-slate-700')} onClick={() => set({ city: '', buildingId: '', floorId: '' })}>All sites</button>
+            {city && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(buildingId ? 'text-brand-700 hover:underline' : 'font-medium text-slate-700')} onClick={() => set({ buildingId: '', floorId: '' })}>{city}</button></>}
+            {buildingId && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(floorId ? 'text-brand-700 hover:underline' : 'font-medium text-slate-700')} onClick={() => set({ floorId: '' })}>{bById.get(buildingId)?.name}</button></>}
+            {floorId && <><ChevronRight className="h-4 w-4 text-slate-300" /><span className="font-medium text-slate-700">{floorName(floorId)}</span></>}
           </div>
-          <p data-summary className="mt-2 max-w-2xl text-[16px] leading-relaxed text-slate-600">
-            <strong className="text-slate-900">{k.inDate} of {k.assets} units</strong>{type ? ` (${EQUIPMENT_LABELS[type]})` : ''} are inspected and in date.{' '}
-            {report.toInspect.length > 0 ? <>{report.toInspect.length} still need inspecting.</> : <>Nothing is waiting.</>}
-            {oos.length > 0 && <> <span className="font-semibold text-rose-600">{oos.length} must not be used.</span></>}
-          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="dark" icon={<FileText className="h-4 w-4" />} disabled={busy} onClick={exportPdf}>PDF</Button>
-          <Button icon={<FileSpreadsheet className="h-4 w-4" />} onClick={exportExcel}>Excel</Button>
+          <Button variant="dark" className="flex-1 sm:flex-none" icon={<FileText className="h-4 w-4" />} disabled={busy} onClick={exportPdf}>{busy ? 'Preparing…' : 'PDF report'}</Button>
+          <Button className="flex-1 sm:flex-none" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={exportExcel}>Excel</Button>
         </div>
       </div>
 
-      {/* Filters: all taps, no dropdowns */}
-      <div className="mb-5 space-y-3">
-        {nextLevel.length > 0 && (
-          <FilterRow label={!city ? 'Pick a city' : !buildingId ? 'Pick a site' : 'Pick a floor'}>
-            {nextLevel.map((x) => <Chip key={x.id} onClick={() => set(x.patch)} count={x.count}>{x.label}</Chip>)}
-          </FilterRow>
-        )}
-        <FilterRow label="Period">
-          {PERIODS.map((x) => <Chip key={x} active={period === x} onClick={() => set({ period: x === 'quarter' ? '' : x })}>{PERIOD_SHORT[x]}</Chip>)}
-        </FilterRow>
-        <FilterRow label="Equipment">
-          <Chip active={!type} onClick={() => set({ type: '' })}>All</Chip>
-          {(Object.keys(EQUIPMENT_LABELS) as EquipmentType[]).map((t) => <Chip key={t} active={type === t} onClick={() => set({ type: t })}>{EQUIPMENT_LABELS[t]}</Chip>)}
-        </FilterRow>
+      {/* One toolbar: where, what, when */}
+      <div className="mb-5 flex flex-col gap-2.5 lg:flex-row lg:items-center">
+        <div className="flex gap-2">
+          <PickerButton icon={<MapPin className="h-[18px] w-[18px]" />} label={place} active={!!city} onClick={() => setPicker('place')} />
+          <PickerButton icon={<Layers className="h-[18px] w-[18px]" />} label={type ? EQUIPMENT_LABELS[type] : 'All equipment'} active={!!type} onClick={() => setPicker('type')} />
+        </div>
+        <div className="lg:ml-auto lg:w-[420px]">
+          <Segmented value={period} onChange={(x) => set({ period: x === 'quarter' ? '' : x })}
+            options={PERIODS.map((x) => ({ value: x, label: <><span className="sm:hidden">{PERIOD_TINY[x]}</span><span className="hidden sm:inline">{PERIOD_SHORT[x]}</span></> }))} />
+        </div>
       </div>
 
-      {/* Four numbers, each saying what it means. Tap one to see the list behind it. */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi label="Inspected" value={<>{k.inDate}<span className="text-[17px] font-medium text-slate-400"> of {k.assets}</span></>} sub={`${pctDone}% · in the last 90 days`} bar={pctDone} onClick={() => set({ view: '' })} active={view === 'summary'} />
-        <Kpi label="Still to inspect" value={report.toInspect.length} sub="Never inspected, overdue or due soon" tone={report.toInspect.length ? 'amber' : 'green'} onClick={() => set({ view: 'due' })} active={view === 'due'} />
-        <Kpi label="Do not use" value={oos.length} sub="Out of service until a re-test passes" tone={oos.length ? 'red' : 'green'} onClick={() => set({ view: 'oos' })} active={view === 'oos'} />
-        <Kpi label="Problems found" value={report.defects.length} sub={report.defects.length ? `${k.safetyCritical} on safety checks` : 'No open problems'} tone={report.defects.length ? 'red' : 'green'} onClick={() => set({ view: 'defects' })} active={view === 'defects'} />
-      </div>
+      {/* The report's cover: one ring, one sentence, three numbers */}
+      <Card className="mb-6 overflow-hidden">
+        <div className="grid items-center gap-5 p-5 sm:p-6 md:grid-cols-[auto_minmax(0,1fr)]">
+          <div className="flex items-center gap-5">
+            <div className="relative grid h-[124px] w-[124px] shrink-0 place-items-center">
+              <svg viewBox="0 0 124 124" className="absolute inset-0 -rotate-90" aria-hidden="true">
+                <circle cx="62" cy="62" r={R} fill="none" stroke="rgb(0 0 0 / 0.06)" strokeWidth="11" />
+                <circle cx="62" cy="62" r={R} fill="none" stroke="var(--color-brand-500)" strokeWidth="11" strokeLinecap={ringPct >= 3 ? 'round' : 'butt'}
+                  strokeDasharray={`${(ringPct / 100) * C} ${C}`} className="transition-[stroke-dasharray] duration-700 ease-out" />
+              </svg>
+              <div className="text-center">
+                <div className="text-[30px] font-bold leading-none tracking-[-0.03em] tabular">{ringPct}<span className="text-[17px] font-semibold text-slate-400">%</span></div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">in date</div>
+              </div>
+            </div>
+            <div className="min-w-0 md:hidden">
+              <div className="text-[22px] font-bold leading-tight tracking-[-0.02em]">{k.inDate} of {k.assets}</div>
+              <div className="text-[15px] text-slate-500">units inspected</div>
+            </div>
+          </div>
+          <div className="min-w-0">
+            <p data-summary className="hidden text-[20px] font-semibold leading-snug tracking-[-0.015em] text-slate-900 md:block">
+              {k.inDate} of {k.assets} units inspected{type ? ` (${EQUIPMENT_LABELS[type]})` : ''}
+              <span className="font-normal text-slate-500"> · {place}</span>
+            </p>
+            <p className="mt-1 hidden text-[15px] text-slate-500 md:block">
+              {oos.length > 0 ? <><span className="font-semibold text-rose-600">{oos.length} {oos.length === 1 ? 'unit' : 'units'} must not be used</span> until re-tested. </> : 'Every unit can be used. '}
+              {report.toInspect.length > 0 ? `${report.toInspect.length} still need inspecting.` : 'Nothing is waiting.'}
+            </p>
+            <div className="-mx-2 grid grid-cols-3 gap-1 border-t border-black/[.06] pt-3 md:mx-0 md:mt-4 md:-ml-4 md:border-0 md:pt-0">
+              {stat('due', 'Still to inspect', 'To inspect', report.toInspect.length, 'Never inspected, overdue or due soon', 'amber')}
+              {stat('oos', 'Do not use', 'Do not use', oos.length, 'Out of service until re-tested', 'red')}
+              {stat('defects', 'Problems', 'Problems', report.defects.length, report.defects.length ? `${k.safetyCritical} on safety checks` : 'None open', 'red')}
+            </div>
+          </div>
+        </div>
+      </Card>
 
-      <div className="scrollbar-none -mx-4 mb-3 flex gap-1 overflow-x-auto border-b border-slate-200 px-4 sm:mx-0 sm:px-0">
-        {tabs.map((t) => (
-          <button key={t.id} onClick={() => set({ view: t.id === 'summary' ? '' : t.id })}
-            className={cx('-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm font-medium transition', view === t.id ? 'border-ink-950 text-slate-900' : 'border-transparent text-slate-500 hover:text-slate-800')}>
-            {t.label}{t.n != null && <span className={cx('ml-1.5 tabular', t.tone)}>{t.n}</span>}
-          </button>
-        ))}
+      {/* What to list */}
+      <div className="scrollbar-none -mx-4 mb-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="inline-flex gap-0.5 rounded-[11px] bg-black/[.06] p-[3px]">
+          {tabs.map((t) => (
+            <button key={t.id} onClick={() => set({ view: t.id === 'summary' ? '' : t.id })}
+              className={cx('flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[9px] px-3.5 text-[14px] font-semibold transition-all duration-200',
+                view === t.id ? 'bg-white text-slate-900 shadow-[0_1px_3px_rgb(0_0_0/0.14),0_0_0_0.5px_rgb(0_0_0/0.04)]' : 'text-slate-600 hover:text-slate-900')}>
+              {t.label}{t.n != null && <span className={cx('tabular text-[13px]', t.tone || 'text-slate-400')}>{t.n}</span>}
+            </button>
+          ))}
+        </div>
       </div>
 
       <Card className="overflow-hidden">
@@ -158,7 +190,7 @@ export function Reports() {
               <thead><tr className="border-b border-slate-100 text-left text-xs font-medium text-slate-500">
                 <th className="px-4 py-3 sm:px-5">{group === 'city' ? 'City' : group === 'building' ? 'Site' : group === 'floor' ? 'Floor' : 'Equipment'}</th>
                 <th className="w-40 px-3 py-3 sm:w-56">Inspected</th>
-                <th className="px-3 py-3 text-right">Do not use</th>
+                <th className="whitespace-nowrap px-3 py-3 text-right"><span className="sm:hidden">Out</span><span className="hidden sm:inline">Do not use</span></th>
                 <th className="px-4 py-3 text-right sm:px-5">Problems</th>
               </tr></thead>
               <tbody className="divide-y divide-slate-100">
@@ -215,28 +247,82 @@ export function Reports() {
           </ul>
         ))}
       </Card>
-      <p className="mt-3 text-[13px] leading-relaxed text-slate-500">"Inspected" means checked in the last 90 days. "Inspections done" lists those carried out in {periodLabel(period)}. <strong>PDF</strong> is the full report for {place} to send the client; <strong>Excel</strong> downloads the list on screen.</p>
-    </>
+      <p className="mt-3 px-1 text-[13px] leading-relaxed text-slate-500">"In date" means inspected in the last 90 days. <strong>PDF report</strong> is the full report for {place} to send the client; <strong>Excel</strong> downloads the list on screen.</p>
+
+      <PlaceSheet open={picker === 'place'} onClose={() => setPicker(null)} data={data} city={city} buildingId={buildingId}
+        onPick={(patch) => { set({ city: '', buildingId: '', floorId: '', ...patch }); setPicker(null); }} />
+      <Sheet open={picker === 'type'} onClose={() => setPicker(null)} title="Equipment">
+        <Card className="divide-y overflow-hidden !bg-white">
+          {(['', ...Object.keys(EQUIPMENT_LABELS)] as (EquipmentType | '')[]).map((t) => (
+            <button key={t || 'all'} onClick={() => { set({ type: t }); setPicker(null); }} className="row-press flex w-full items-center gap-3 px-4 py-3.5 text-left">
+              {t ? <EquipmentAvatar type={t} /> : <span className="grid h-10 w-10 place-items-center rounded-[10px] bg-slate-500 text-white"><Layers className="h-5 w-5" /></span>}
+              <span className="flex-1 text-[17px] font-medium">{t ? EQUIPMENT_LABELS[t] : 'All equipment'}</span>
+              <span className="text-[14px] tabular text-slate-400">{t ? data.assets.filter((a) => a.equipmentType === t).length : data.assets.length}</span>
+              {type === t && <Check className="h-5 w-5 text-brand-600" />}
+            </button>
+          ))}
+        </Card>
+      </Sheet>
+    </div>
   );
 }
 
-function Kpi({ label, value, sub, tone, bar, onClick, active }: { label: string; value: React.ReactNode; sub: string; tone?: 'green' | 'amber' | 'red'; bar?: number; onClick: () => void; active: boolean }) {
+function PickerButton({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
   return (
-    <button onClick={onClick} className={cx('card p-4 text-left transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lift active:scale-[.98]', active && 'ring-2 ring-brand-500/60')}>
-      <div className="text-[14px] font-semibold text-slate-700">{label}</div>
-      <div className={cx('mt-1 text-[30px] font-bold leading-tight tracking-[-0.02em] tabular', tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{value}</div>
-      {bar != null && <div className="mt-2"><Bar value={bar} tone="brand" /></div>}
-      <div className="mt-1.5 text-[13px] leading-snug text-slate-500">{sub}</div>
+    <button type="button" onClick={onClick}
+      className={cx('flex h-10 min-w-0 items-center gap-2 rounded-[12px] pl-3 pr-2.5 text-[15px] font-semibold transition duration-150 active:scale-[.97]',
+        active ? 'bg-brand-500/[.12] text-brand-700' : 'bg-white text-slate-800 shadow-[0_0_0_0.5px_rgb(0_0_0/0.1),0_1px_2px_rgb(0_0_0/0.04)] hover:bg-slate-50')}>
+      <span className={active ? 'text-brand-600' : 'text-slate-400'}>{icon}</span>
+      <span className="truncate">{label}</span>
+      <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
     </button>
   );
 }
 
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+type AllData = NonNullable<ReturnType<typeof useAllData>>;
+
+/** Pick where the report covers: everything, a city, or one site. */
+function PlaceSheet({ open, onClose, data, city, buildingId, onPick }: {
+  open: boolean; onClose: () => void; data: AllData; city: string; buildingId: string; onPick: (patch: Record<string, string>) => void;
+}) {
+  const [q, setQ] = useState('');
+  const term = q.trim().toLowerCase();
+  const cities = [...new Set(data.buildings.map((b) => b.city))].sort();
+  const count = (pred: (bId: string) => boolean) => data.assets.filter((a) => pred(a.buildingId)).length;
+  const row = (key: string, title: string, sub: string, n: number, selected: boolean, patch: Record<string, string>, strong = false) => (
+    <button key={key} onClick={() => onPick(patch)} className="row-press flex w-full items-center gap-3 px-4 py-3 text-left">
+      <div className="min-w-0 flex-1">
+        <div className={cx('truncate text-[17px]', strong ? 'font-semibold' : 'font-medium')}>{title}</div>
+        {sub && <div className="text-[13px] text-slate-500">{sub}</div>}
+      </div>
+      <span className="text-[14px] tabular text-slate-400">{n}</span>
+      {selected && <Check className="h-5 w-5 text-brand-600" />}
+    </button>
+  );
   return (
-    <div>
-      <div className="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-[0.05em] text-slate-400">{label}</div>
-      <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">{children}</div>
-    </div>
+    <Sheet open={open} onClose={onClose} title="Which sites?">
+      <SearchField id="place-search" value={q} onChange={setQ} placeholder="Search a city or site" />
+      <div className="mt-4 space-y-5">
+        {!term && (
+          <Card className="divide-y overflow-hidden !bg-white">
+            {row('all', 'All sites', `${data.buildings.length} sites in ${cities.length} cities`, data.assets.length, !city, {}, true)}
+          </Card>
+        )}
+        {cities.map((c) => {
+          const sites = data.buildings.filter((b) => b.city === c && (!term || `${b.name} ${b.city}`.toLowerCase().includes(term))).sort((a, b) => a.name.localeCompare(b.name));
+          if (!sites.length) return null;
+          return (
+            <div key={c}>
+              <div className="mb-1.5 px-1 text-[13px] font-semibold uppercase tracking-[0.04em] text-slate-500">{c}</div>
+              <Card className="divide-y overflow-hidden !bg-white">
+                {sites.length > 1 && row(`city-${c}`, `All of ${c}`, `${sites.length} sites`, count((id) => data.buildings.find((b) => b.id === id)?.city === c), city === c && !buildingId, { city: c }, true)}
+                {sites.map((b) => row(b.id, b.name, '', count((id) => id === b.id), buildingId === b.id, { city: c, buildingId: b.id }))}
+              </Card>
+            </div>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 
