@@ -10,7 +10,7 @@ import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
 import { PickPersonSheet } from './Inputs.tsx';
 import { can, useUser } from '../lib/hooks.ts';
-import { discardFailed, retryFailed, syncNow, useSync } from '../lib/sync.ts';
+import { discardFailed, resetSyncAfterWipe, retryFailed, syncNow, useSync } from '../lib/sync.ts';
 import { Badge, Button, cx, Sheet } from './ui.tsx';
 import { useDialogs } from './Dialogs.tsx';
 import { IS_DEMO } from '../lib/demo.ts';
@@ -27,7 +27,6 @@ export function Shell() {
   const [scanOpen, setScanOpen] = useState(false);
   const dialogs = useDialogs();
   const [whoOpen, setWhoOpen] = useState(false);
-  const [whoSkipped, setWhoSkipped] = useState(false);
   const unnamed = user.name === 'Team';
   const reviewCount = useLiveQuery(() => db.inspections.where('status').equals('submitted').count(), []) ?? 0;
   const myDrafts = useLiveQuery(() => db.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id).count(), [user.id]) ?? 0;
@@ -58,7 +57,7 @@ export function Shell() {
 
   const chooseName = (name: string) => {
     const s = getSession();
-    if (s) setSession({ ...s, user: { ...s.user, name } });
+    if (s) setSession({ ...s, user: { ...s.user, name }, named: true });
     setWhoOpen(false);
   };
   const signOut = async () => {
@@ -67,6 +66,7 @@ export function Shell() {
     if (!IS_DEMO && pending && !(await dialogs.confirm(`${pending} change(s) have not synced yet and will be lost. Lock anyway?`, { title: 'Lock the app', confirmLabel: 'Lock anyway', danger: true }))) return;
     await wipeLocal();
     setSession(null);
+    resetSyncAfterWipe();
   };
 
   return (
@@ -171,7 +171,7 @@ export function Shell() {
         <button onClick={signOut} className="row-press mt-4 flex w-full items-center justify-center gap-2 rounded-[14px] bg-black/[.05] py-3.5 text-[17px] font-semibold text-rose-600"><LogOut className="h-5 w-5" />Lock the app</button>
       </Sheet>
 
-      <PickPersonSheet open={whoOpen || (unnamed && !whoSkipped && !!sync.lastSyncAt)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }}
+      <PickPersonSheet open={whoOpen} onClose={() => setWhoOpen(false)}
         onPick={chooseName} current={unnamed ? undefined : user.name} title="Who is using this device?" />
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />

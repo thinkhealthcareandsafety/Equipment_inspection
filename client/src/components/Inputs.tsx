@@ -84,15 +84,17 @@ const initialsOf = (n: string) => n.split(/\s+/).filter(Boolean).map((p) => p[0]
  * "Who is using this device?" / "Who did this inspection?": a list of people to tap.
  * Nothing here deletes anyone (that lives on the Team page), and it waits for the team to download.
  */
-export function PickPersonSheet({ open, onClose, onPick, current, title = 'Who are you?' }: {
-  open: boolean; onClose: () => void; onPick: (name: string) => void; current?: string; title?: string;
-}) {
+/** The list of people to tap, with "Add yourself". Waits for the team to download. Never deletes anyone. */
+export function PersonChooser({ onPick, current }: { onPick: (name: string) => void; current?: string }) {
   const team = useTeam();
   const sync = useSync();
   const toast = useToast();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const loading = team.length === 0 && !sync.lastSyncAt;
+  const [waitedLong, setWaitedLong] = useState(false);
+  useEffect(() => { const t = window.setTimeout(() => setWaitedLong(true), 8000); return () => window.clearTimeout(t); }, []);
+  // Still downloading: no names yet and the first sync has not finished (give up waiting after 8 s, e.g. offline).
+  const loading = team.length === 0 && !sync.lastSyncAt && !waitedLong;
   const add = async () => {
     const n = name.trim();
     if (!n) return;
@@ -104,8 +106,7 @@ export function PickPersonSheet({ open, onClose, onPick, current, title = 'Who a
     onPick(m.name);
   };
   return (
-    <Sheet open={open} onClose={onClose} title={title}>
-      <p className="-mt-1 mb-4 text-[15px] text-slate-500">Your name goes on the inspections and certificates you sign.</p>
+    <>
       {loading ? (
         <div className="space-y-2" aria-busy="true" aria-label="Loading the team">
           {[0, 1, 2].map((i) => <div key={i} className="flex animate-pulse items-center gap-3 rounded-2xl bg-slate-50 p-3"><div className="h-11 w-11 rounded-full bg-slate-200" /><div className="h-4 w-40 rounded bg-slate-200" /></div>)}
@@ -142,6 +143,18 @@ export function PickPersonSheet({ open, onClose, onPick, current, title = 'Who a
           <Plus className="h-4 w-4" />Not on the list? Add yourself
         </button>
       ))}
+    </>
+  );
+}
+
+/** The same chooser in a sheet: "switch person" from the menu, or the technician field of an inspection. */
+export function PickPersonSheet({ open, onClose, onPick, current, title = 'Who are you?' }: {
+  open: boolean; onClose: () => void; onPick: (name: string) => void; current?: string; title?: string;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose} title={title}>
+      <p className="-mt-1 mb-4 text-[15px] text-slate-500">Your name goes on the inspections and certificates you sign.</p>
+      {open && <PersonChooser onPick={onPick} current={current} />}
     </Sheet>
   );
 }

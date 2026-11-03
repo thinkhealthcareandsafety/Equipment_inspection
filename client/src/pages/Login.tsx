@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { api, setSession, type Session } from '../lib/api.ts';
 import { wipeLocal } from '../lib/db.ts';
+import { resetSyncAfterWipe } from '../lib/sync.ts';
 import { Button, cx } from '../components/ui.tsx';
 
 /** Number of digits in the access code. Change VITE_ACCESS_CODE_LENGTH if the code gets longer. */
@@ -28,6 +29,7 @@ export function Login() {
       const s = await api<Session>('/auth/login', { method: 'POST', json: { code: value } });
       await wipeLocal();
       setSession(s);
+      resetSyncAfterWipe(); // download this device's data now, even on a second login in the same tab
     } catch (err) {
       const m = (err as Error).message;
       setError(/code|access|unauthor|401|403/i.test(m) ? 'That code is not right. Try again.' : m);

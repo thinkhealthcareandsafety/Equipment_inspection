@@ -167,6 +167,16 @@ async function applyPull(d: PullResponse) {
   });
 }
 
+/**
+ * Local data was wiped (a new login, or locking the app). Forget what this tab knew about the
+ * last sync so screens wait for fresh data, and download again straight away when logged in.
+ * (startSync only wires listeners once per tab, so a second login in the same tab needs this.)
+ */
+export function resetSyncAfterWipe() {
+  emit({ lastSyncAt: null, pending: 0, failed: 0, error: null });
+  if (getSession()) void syncNow();
+}
+
 let started = false;
 export function startSync() {
   if (started) return;

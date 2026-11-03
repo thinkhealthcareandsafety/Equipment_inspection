@@ -3,7 +3,8 @@ import { demoApi, IS_DEMO } from './demo.ts';
 
 const KEY = 'think.session';
 
-export interface Session { token: string; user: User }
+/** `named` is set once someone picks who they are after logging in; until then the app asks first. */
+export interface Session { token: string; user: User; named?: boolean }
 
 export function getSession(): Session | null {
   try { return JSON.parse(localStorage.getItem(KEY) ?? 'null'); } catch { return null; }

@@ -10,6 +10,7 @@ import { ToastProvider } from './components/ui.tsx';
 import { can, useSession } from './lib/hooks.ts';
 import { startSync } from './lib/sync.ts';
 import { Login } from './pages/Login.tsx';
+import { WhoAreYou } from './pages/WhoAreYou.tsx';
 import { Dashboard } from './pages/Dashboard.tsx';
 import { Sites } from './pages/Sites.tsx';
 import { BuildingPage } from './pages/Building.tsx';
@@ -29,7 +30,8 @@ export function App() {
     <ToastProvider>
       <DialogProvider>
       <Router>
-        {!session ? <Routes><Route path="*" element={<Login />} /></Routes> : (
+        {!session ? <Routes><Route path="*" element={<Login />} /></Routes>
+          : !(session.named || (session.user.name && session.user.name !== 'Team')) ? <Routes><Route path="*" element={<WhoAreYou />} /></Routes> : (
           <Routes>
             <Route element={<Shell />}>
               <Route index element={<Dashboard />} />
