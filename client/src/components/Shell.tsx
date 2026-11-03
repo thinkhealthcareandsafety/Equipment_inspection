@@ -2,8 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LogOut, RefreshCw, Settings, Users,
+  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LogOut, RefreshCw, ScanLine, Settings, Users,
 } from 'lucide-react';
+import { ScanSheet } from './ScanSheet.tsx';
 import { formatDateTime } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
@@ -23,6 +24,7 @@ export function Shell() {
   const [more, setMore] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const dialogs = useDialogs();
   const [whoOpen, setWhoOpen] = useState(false);
   const [whoSkipped, setWhoSkipped] = useState(false);
@@ -105,6 +107,9 @@ export function Shell() {
           <div className="flex-1" />
           {IS_DEMO && <span className="hidden rounded-full bg-amber-500/[.16] px-3 py-1 text-[13px] font-medium text-amber-700 sm:inline">Demo · your entries stay in this browser</span>}
           <div className="lg:hidden"><SyncPill onClick={() => setSyncOpen(true)} /></div>
+          <button onClick={() => setScanOpen(true)} className="flex h-10 items-center gap-2 rounded-full px-2.5 text-slate-700 transition hover:bg-black/[.06] active:scale-95 sm:px-3.5" aria-label="Scan a QR label">
+            <ScanLine className="h-[22px] w-[22px]" /><span className="hidden text-[15px] font-semibold sm:inline">Scan</span>
+          </button>
           <button onClick={() => setNotesOpen(true)} className="relative grid h-10 w-10 place-items-center rounded-full text-slate-600 transition hover:bg-black/[.06] active:scale-95" aria-label="Notifications">
             <Bell className="h-[22px] w-[22px]" />
             {unread > 0 && <span className="absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-canvas">{unread}</span>}
@@ -151,6 +156,7 @@ export function Shell() {
       <TeamSheet open={whoOpen || (unnamed && !whoSkipped)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }} onPick={chooseName} title="Who is using this device?" />
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />
+      <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
     </div>
   );
 }

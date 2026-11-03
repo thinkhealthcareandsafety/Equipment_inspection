@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ClipboardCheck, Database, FileText, Pencil, ShieldAlert, TriangleAlert } from 'lucide-react';
-import { DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, type Asset } from '@think/shared';
+import { ClipboardCheck, Database, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
+import { DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, type Asset, type Building } from '@think/shared';
+import { downloadQrLabels, qrDataUrl, unitUrl } from '../lib/qr.ts';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
 import { createInspection, updateAsset } from '../lib/store.ts';
@@ -112,6 +113,7 @@ export function AssetPage() {
         </div>
 
         <div className="space-y-6">
+          {building && <QrCard asset={asset} building={building} onError={(m) => toast(m, 'err')} />}
           {flags.length > 0 && (
             <Card className="p-5">
               <div className="mb-1 font-semibold">Record completeness</div>
@@ -132,6 +134,25 @@ export function AssetPage() {
       </div>
       <EditAsset open={edit} onClose={() => setEdit(false)} asset={asset} floors={data.floors ?? []} locations={data.locations ?? []} onSaved={() => toast('Asset updated')} />
     </>
+  );
+}
+
+function QrCard({ asset, building, onError }: { asset: Asset; building: Building; onError: (m: string) => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { let on = true; qrDataUrl(unitUrl(asset.id), 360).then((u) => on && setSrc(u)); return () => { on = false; }; }, [asset.id]);
+  return (
+    <Card className="flex items-center gap-4 p-5">
+      <div className="shrink-0 rounded-xl bg-white p-2 ring-1 ring-black/10">{src ? <img src={src} alt={`QR code for ${asset.assetTag}`} className="h-[104px] w-[104px]" /> : <div className="h-[104px] w-[104px]" />}</div>
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold">QR label</div>
+        <div className="mt-1 text-sm text-slate-500">Stick it on the unit. Any phone camera opens this page, ready to inspect.</div>
+        <Button size="sm" className="mt-3" icon={<Printer className="h-4 w-4" />} disabled={busy}
+          onClick={async () => { setBusy(true); try { await downloadQrLabels([asset], building); } catch (e) { onError((e as Error).message); } finally { setBusy(false); } }}>
+          {busy ? 'Preparing…' : 'Label PDF'}
+        </Button>
+      </div>
+    </Card>
   );
 }
 
