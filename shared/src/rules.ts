@@ -216,6 +216,14 @@ export function assetAfterInspection(t: ChecklistTemplate, asset: Asset, insp: I
   };
 }
 
+/**
+ * Whether a second person must approve an inspection before it is final.
+ * Think Healthcare decided (Nov 2026) that the inspector's signature is enough: signing makes
+ * the inspection final and the certificate ready. Inspections already waiting for approval can
+ * still be approved. Set to true to bring the review step back.
+ */
+export const REVIEW_REQUIRED = false;
+
 export function canEdit(insp: Inspection, role: string, userId: string): boolean {
   if (insp.status === 'finalized') return false;
   if (insp.status === 'submitted') return false;

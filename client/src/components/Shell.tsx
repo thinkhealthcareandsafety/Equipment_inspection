@@ -38,7 +38,7 @@ export function Shell() {
     { to: '/', label: 'Home', icon: <LayoutDashboard className="h-5 w-5" />, show: true },
     { to: '/sites', label: 'Sites', icon: <Building2 className="h-5 w-5" />, show: true },
     { to: '/reports', label: 'Reports', icon: <ChartColumn className="h-5 w-5" />, show: true },
-    { to: '/inspections', label: 'Review', icon: <ClipboardCheck className="h-5 w-5" />, show: can.review(user.role), badge: reviewCount },
+    { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: can.review(user.role), badge: reviewCount },
     { to: '/inspections', label: 'My inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: user.role === 'inspector', badge: myDrafts },
     { to: '/team', label: 'Team', icon: <Users className="h-5 w-5" />, show: can.team(user.role) },
     { to: '/admin', label: 'Admin', icon: <Settings className="h-5 w-5" />, show: can.admin(user.role) },

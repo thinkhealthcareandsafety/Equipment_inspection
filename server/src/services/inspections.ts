@@ -1,5 +1,5 @@
 import {
-  assetAfterInspection, blocking, DEFAULT_TEMPLATES, validateInspection,
+  assetAfterInspection, blocking, DEFAULT_TEMPLATES, REVIEW_REQUIRED, validateInspection,
   type ChecklistTemplate, type EquipmentType, type Inspection,
 } from '@think/shared';
 import { audit, type Queryable } from '../db.ts';
@@ -15,11 +15,13 @@ export async function loadTemplate(q: Queryable, id: EquipmentType, version: num
   return r.rows[0]?.definition ?? DEFAULT_TEMPLATES[id];
 }
 
+// Signing is final when no review is needed: a draft goes straight to 'finalized'.
+const SIGN = REVIEW_REQUIRED ? 'submitted' : 'finalized';
 const ALLOWED: Record<string, Record<string, string[]>> = {
   // role → from-status → allowed to-statuses
-  inspector: { new: ['draft', 'submitted'], draft: ['draft', 'submitted'], returned: ['draft', 'returned', 'submitted'] },
-  reviewer: { new: ['draft', 'submitted'], draft: ['draft', 'submitted'], returned: ['draft', 'returned', 'submitted'], submitted: ['finalized', 'returned'] },
-  admin: { new: ['draft', 'submitted'], draft: ['draft', 'submitted'], returned: ['draft', 'returned', 'submitted'], submitted: ['finalized', 'returned'] },
+  inspector: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN] },
+  reviewer: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN], submitted: ['finalized', 'returned'] },
+  admin: { new: ['draft', SIGN], draft: ['draft', SIGN], returned: ['draft', 'returned', SIGN], submitted: ['finalized', 'returned'] },
 };
 
 /**
@@ -53,7 +55,7 @@ export async function upsertInspection(q: Queryable, user: AuthUser, incoming: I
     if (to === 'finalized' && !next.reviewerSignature) throw new OpError('invalid', 'Reviewer signature is required to finalise.');
     if (to === 'returned' && !next.reviewerComment.trim()) throw new OpError('invalid', 'Add a comment explaining what to correct.');
   } else {
-    if (to === 'submitted') {
+    if (to === 'submitted' || to === 'finalized') {
       const errs = blocking(validateInspection(template, incoming, true));
       if (errs.length) throw new OpError('invalid', `Cannot submit: ${errs.map((e) => `${e.path} – ${e.message}`).join('; ')}`);
     }
@@ -89,8 +91,9 @@ export async function upsertInspection(q: Queryable, user: AuthUser, incoming: I
       changes: { fields: (incoming.events ?? []).filter((e) => !(current.events ?? []).some((c) => c.at === e.at && c.action === e.action)).length }, ...meta });
   }
 
-  // Submission is the moment the asset's state changes: a safety-critical fail takes it out of service immediately.
-  if (to === 'submitted' && from !== 'submitted') {
+  // Signing is the moment the asset's state changes: a safety-critical fail takes it out of service immediately.
+  // (An approval of an already-submitted inspection does not change the asset again.)
+  if ((to === 'submitted' || to === 'finalized') && from !== 'submitted' && from !== 'finalized') {
     const newer = asset.lastInspectionDate && asset.lastInspectionId !== id && asset.lastInspectionDate > next.header.inspectionDate;
     if (!newer) {
       const a = assetAfterInspection(template, asset, next);

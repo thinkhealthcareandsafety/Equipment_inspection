@@ -197,7 +197,9 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
       </div>
 
       {insp.status === 'returned' && insp.reviewerComment && <Banner tone="amber" title="Returned by reviewer">{insp.reviewerComment}</Banner>}
-      {insp.status === 'finalized' && <Banner tone="green" title="Finalised and locked">Approved by {insp.reviewerSignature?.name}, {formatDateTime(insp.reviewerSignature?.signedAt)}.</Banner>}
+      {insp.status === 'finalized' && (insp.reviewerSignature
+        ? <Banner tone="green" title="Final and locked">Approved by {insp.reviewerSignature.name}, {formatDateTime(insp.reviewerSignature.signedAt)}.</Banner>
+        : <Banner tone="green" title="Final and locked">Signed by {insp.technicianSignature?.name}, {formatDateTime(insp.technicianSignature?.signedAt)}. The certificate is ready.</Banner>)}
       {insp.status === 'submitted' && !can.review(user.role) && <Banner tone="blue" title="Submitted — waiting for review">Signed by {insp.technicianSignature?.name}, {formatDateTime(insp.technicianSignature?.signedAt)}.</Banner>}
       {insp.status === 'submitted' && can.review(user.role) && <ReviewPanel insp={insp} />}
 
@@ -330,7 +332,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
       <Sheet open={!!done} onClose={() => setDone(null)} title="Submitted">
         <div className="space-y-4">
           <div className={cx('rounded-2xl p-4 text-center font-semibold text-white', derived.outOfService ? 'bg-rose-600' : 'bg-emerald-600')}>
-            {derived.outOfService ? `${h.equipmentAssetId} is now OUT OF SERVICE` : `${h.equipmentAssetId} submitted for review`}
+            {derived.outOfService ? `${h.equipmentAssetId} is now OUT OF SERVICE` : `${h.equipmentAssetId} done. Certificate ready.`}
           </div>
           {done?.next ? (
             <Button size="lg" variant="primary" className="w-full" onClick={() => startNext(done.next!)}>

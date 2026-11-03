@@ -153,7 +153,7 @@ export function Help() {
         <Card className="overflow-hidden">
           <ul className="divide-y divide-slate-100 text-[15px] leading-relaxed text-slate-700">
             <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Home</strong> shows the whole quarter at a glance: how many units are done, how many still to inspect, what is out of service and open defects. Below are the round by city, today's inspections by person and the sites with the most work left. Tap any number to see the list behind it.</li>
-            <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Review</strong> lists submitted inspections. Open one, check it, then <strong>Approve &amp; sign</strong> to lock it and issue the certificate, or <strong>Return</strong> it to the inspector with a comment.</li>
+            <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Inspections</strong> lists everything done. No approval is needed: an inspection is final as soon as the inspector signs it, and its certificate is ready straight away.</li>
             <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Reports:</strong> choose a city or site, the period and the equipment type. <strong>PDF</strong> gives a report you can send the client; <strong>Excel</strong> gives the list for the office.</li>
             <li className="px-4 py-4 sm:px-5"><FileText className="mr-1 inline h-4 w-4 -translate-y-px text-slate-500" /><strong className="text-slate-900">Certificates:</strong> open any submitted inspection, tap <strong>⋯</strong> at the top, then <strong>Certificate PDF</strong>. It uses the same layout and wording as the paper form.</li>
           </ul>

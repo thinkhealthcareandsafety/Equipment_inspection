@@ -62,9 +62,9 @@ function watermark(doc: jsPDF, text: string) {
   doc.text(text, PAGE_W / 2, PAGE_H / 2 + 20, { align: 'center', angle: 35 });
 }
 
-function sigImage(doc: jsPDF, sig: Signature | null, x: number, y: number, w: number, h: number) {
+function sigImage(doc: jsPDF, sig: Signature | null, x: number, y: number, w: number, h: number, notRequired = false) {
   doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(...INK);
-  if (!sig) { doc.setTextColor(...MUTED); doc.text('Not signed', x + 1, y + h / 2 + 1); return; }
+  if (!sig) { doc.setTextColor(...MUTED); doc.text(notRequired ? 'Not required' : 'Not signed', x + 1, y + h / 2 + 1); return; }
   try { doc.addImage(sig.dataUrl, 'PNG', x, y + 0.5, Math.min(w * 0.45, (h - 1) * 3.2), h - 1); } catch { /* ignore bad image */ }
   doc.text(`${sig.name}`, x + w * 0.5, y + h / 2 - 0.5);
   doc.setTextColor(...MUTED); doc.setFontSize(7);
@@ -193,7 +193,7 @@ function drawCertificate(doc: jsPDF, insp: Inspection, ctx: PackContext) {
     const x = MX + i * (sw + 6);
     doc.setDrawColor(...LINE); doc.rect(x, y, sw, 20);
     doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(...MUTED); doc.text(label, x + 1.5, y + 3.5);
-    sigImage(doc, sig, x + 1.5, y + 4.5, sw - 3, 14);
+    sigImage(doc, sig, x + 1.5, y + 4.5, sw - 3, 14, i === 1 && insp.status === 'finalized');
   }
   y += 26;
   doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5); doc.setTextColor(...MUTED);
@@ -292,7 +292,7 @@ function drawChecklist(doc: jsPDF, insp: Inspection, ctx: PackContext) {
   for (const [label, sig] of [[RESULT_LABELS.technicianSignature, insp.technicianSignature], [RESULT_LABELS.reviewerSignature, insp.reviewerSignature]] as const) {
     if (y + 11 > PAGE_H - 15) { doc.addPage(); y = 20; }
     kvRow(doc, MX, y, flw, fvw, label, '', 11);
-    sigImage(doc, sig, MX + flw + 1.5, y + 0.5, fvw - 3, 10);
+    sigImage(doc, sig, MX + flw + 1.5, y + 0.5, fvw - 3, 10, label === RESULT_LABELS.reviewerSignature && insp.status === 'finalized');
     y += 11;
   }
   if (insp.reviewerComment && insp.status !== 'finalized') {
