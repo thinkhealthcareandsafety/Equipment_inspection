@@ -16,6 +16,7 @@ export function Dashboard() {
   const nav = useNavigate();
   const [q, setQ] = useState('');
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
+  const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
   if (!data.assets.length) return <Empty title="Downloading your sites…" icon={<ClipboardCheck className="h-6 w-6" />}>The first sync downloads every site and asset so you can work offline.</Empty>;
 
@@ -38,6 +39,16 @@ export function Dashboard() {
     ...data.assets.filter((a) => `${a.assetTag} ${a.serialNumber ?? ''} ${a.manufacturer ?? ''}`.toLowerCase().includes(term)).slice(0, 6)
       .map((a) => ({ key: a.id, to: `/assets/${a.id}`, title: a.assetTag, sub: `${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}`, type: a.equipmentType })),
   ];
+
+  // Today's work by person, for the manager: who inspected how many, and how many failed.
+  const today = todayISO();
+  const doneToday = data.inspections.filter((i) => i.status !== 'draft' && i.header.inspectionDate === today);
+  const people = [...doneToday.reduce((m, i) => {
+    const name = i.header.technician || 'Unknown';
+    const r = m.get(name) ?? { name, count: 0, fails: 0 };
+    r.count++; if (i.result.defectsIdentified) r.fails++;
+    return m.set(name, r);
+  }, new Map<string, { name: string; count: number; fails: number }>()).values()].sort((a, b) => b.count - a.count);
 
   const rt = roundTone(k);
   const tiles = [
@@ -82,6 +93,52 @@ export function Dashboard() {
             <div className="mt-2 text-[13px] text-slate-500">{t.sub}</div>
           </button>
         ))}
+      </div>
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+        <div>
+          <div className="mb-2 flex items-baseline justify-between px-1">
+            <div className="text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">Round by city</div>
+            <Link to="/reports" className="text-[15px] font-medium text-brand-700">Report</Link>
+          </div>
+          <Card className="overflow-hidden">
+            <div className="divide-y">
+              {(byCity ?? []).map((c) => (
+                <Link key={c.key} to={`/reports?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+                  <div className="truncate text-[16px] font-semibold tracking-[-0.01em]">{c.label}</div>
+                  <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} in date, ${c.outOfService} out of service`}>
+                    <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, c.inDate - c.outOfService) / Math.max(c.assets, 1)) * 100}%` }} />
+                    <span className="h-full bg-rose-500" style={{ width: `${(c.outOfService / Math.max(c.assets, 1)) * 100}%` }} />
+                  </div>
+                  <div className="text-right text-[14px] tabular text-slate-500">
+                    {c.inDate}/{c.assets}{c.outOfService > 0 && <span className="ml-1.5 font-semibold text-rose-600">· {c.outOfService} out</span>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </Card>
+          <div className="mt-2 flex gap-4 px-1 text-[12px] text-slate-500">
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Inspected, in date</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Out of service</span>
+            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-slate-200" />Still to do</span>
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 px-1 text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">Today</div>
+          <Card className="overflow-hidden">
+            {people.length === 0 ? <div className="px-4 py-5 text-[15px] text-slate-500">No inspections submitted today yet.</div> : (
+              <div className="divide-y">
+                {people.map((p) => (
+                  <div key={p.name} className="flex items-center gap-3 px-4 py-3">
+                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/[.13] text-[13px] font-semibold text-brand-700">{p.name.split(/\s+/).map((x) => x[0]).slice(0, 2).join('').toUpperCase()}</div>
+                    <div className="min-w-0 flex-1 truncate text-[16px] font-semibold">{p.name}</div>
+                    <div className="text-[14px] tabular text-slate-500">{p.count} inspected{p.fails > 0 && <span className="font-semibold text-rose-600"> · {p.fails} failed</span>}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       </div>
 
       <div className="mb-2 mt-8 flex items-baseline justify-between px-1">

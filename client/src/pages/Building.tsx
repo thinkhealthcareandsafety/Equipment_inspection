@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ChevronRight, ClipboardCheck, Layers, MapPin, Pencil, Plus, Search, SquareCheck, Trash2, X } from 'lucide-react';
+import { ChevronRight, ClipboardCheck, Layers, MapPin, Pencil, Plus, Printer, Search, SquareCheck, Trash2, X } from 'lucide-react';
+import { downloadQrLabels } from '../lib/qr.ts';
 import { dueState, EQUIPMENT_LABELS, formatDate, type Asset, type EquipmentType } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
@@ -29,6 +30,7 @@ export function BuildingPage() {
   const [moveOpen, setMoveOpen] = useState(false);
   const [floorsOpen, setFloorsOpen] = useState(false);
   const [floorEdit, setFloorEdit] = useState<{ id?: string; name: string } | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   const data = useLiveQuery(async () => {
     const [building, floors, locations, assets] = await Promise.all([
@@ -79,7 +81,13 @@ export function BuildingPage() {
     <>
       <PageHeader back="/sites" eyebrow={`${data.client?.name ?? ''} · ${building.city}`} title={building.name}
         subtitle={`${assets.length} assets · ${floors.length} floor${floors.length === 1 ? '' : 's'} recorded${building.notes ? ` · ${building.notes}` : ''}`}
-        actions={<Link to={`/reports?city=${encodeURIComponent(building.city)}&buildingId=${building.id}`}><Button>Site report</Button></Link>} />
+        actions={<>
+          <Button icon={<Printer className="h-4 w-4" />} disabled={printing} title="A4 sheets of 21 QR stickers for every unit shown below"
+            onClick={async () => { setPrinting(true); try { await downloadQrLabels(visible.length ? visible : assets, building, visible.length && visible.length < assets.length ? `${building.name} QR labels (${visible.length} selected).pdf` : undefined); } catch (e) { toast((e as Error).message, 'err'); } finally { setPrinting(false); } }}>
+            {printing ? 'Preparing…' : `QR labels${visible.length && visible.length < assets.length ? ` (${visible.length})` : ''}`}
+          </Button>
+          <Link to={`/reports?city=${encodeURIComponent(building.city)}&buildingId=${building.id}`}><Button>Site report</Button></Link>
+        </>} />
 
       {/* Floor selector */}
       <div className="mb-2 flex items-center justify-between">
