@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronRight, ClipboardCheck, MapPin } from 'lucide-react';
+import { ChevronRight, ClipboardCheck, LifeBuoy, MapPin } from 'lucide-react';
 import { dueState, EQUIPMENT_LABELS, formatDate, todayISO } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, EMPTY_FILTERS, roundText, roundTone } from '../lib/reports.ts';
@@ -62,7 +62,10 @@ export function Dashboard() {
     <div className="mx-auto max-w-4xl">
       <div className="text-[13px] font-semibold uppercase tracking-[0.05em] text-slate-500">{formatDate(todayISO())}</div>
       <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.03em]">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
-      <div className="mt-1 text-[16px] text-slate-500">{data.buildings.length} sites · {k.assets} assets</div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[16px] text-slate-500">
+        <span>{data.buildings.length} sites · {k.assets} assets</span>
+        <Link to="/help" className="inline-flex items-center gap-1.5 font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />How to use</Link>
+      </div>
 
       <div className="relative mt-5">
         <SearchField id="home-search" value={q} onChange={setQ} placeholder="Search asset ID, site or make" />

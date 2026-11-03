@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LogOut, RefreshCw, ScanLine, Settings, Users,
+  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Settings, Users,
 } from 'lucide-react';
 import { ScanSheet } from './ScanSheet.tsx';
 import { formatDateTime } from '@think/shared';
@@ -42,6 +42,7 @@ export function Shell() {
     { to: '/inspections', label: 'My inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: user.role === 'inspector', badge: myDrafts },
     { to: '/team', label: 'Team', icon: <Users className="h-5 w-5" />, show: can.team(user.role) },
     { to: '/admin', label: 'Admin', icon: <Settings className="h-5 w-5" />, show: can.admin(user.role) },
+    { to: '/help', label: 'How to use', icon: <LifeBuoy className="h-5 w-5" />, show: true },
   ].filter((n) => n.show);
   const primary = nav.filter((n) => ['Home', 'Sites', 'Review', 'Reports'].includes(n.label));
   const secondary = nav.filter((n) => !primary.includes(n));
@@ -100,13 +101,13 @@ export function Shell() {
       {/* Top bar */}
       <header className="material-canvas sticky top-0 z-20 border-b-[0.5px] border-black/10">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-10">
-          <div className="flex items-center gap-2.5 lg:hidden">
-            <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 rounded-[9px]" alt="" />
-            <span className="text-[17px] font-semibold tracking-[-0.01em]">Think Inspect</span>
+          <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 shrink-0 rounded-[9px]" alt="" />
+            <span className="truncate whitespace-nowrap text-[17px] font-semibold tracking-[-0.01em]">Think Inspect</span>
           </div>
           <div className="flex-1" />
           {IS_DEMO && <span className="hidden rounded-full bg-amber-500/[.16] px-3 py-1 text-[13px] font-medium text-amber-700 sm:inline">Demo · your entries stay in this browser</span>}
-          <div className="lg:hidden"><SyncPill onClick={() => setSyncOpen(true)} /></div>
+          <div className="lg:hidden"><SyncPill compact onClick={() => setSyncOpen(true)} /></div>
           <button onClick={() => setScanOpen(true)} className="flex h-10 items-center gap-2 rounded-full px-2.5 text-slate-700 transition hover:bg-black/[.06] active:scale-95 sm:px-3.5" aria-label="Scan a QR label">
             <ScanLine className="h-[22px] w-[22px]" /><span className="hidden text-[15px] font-semibold sm:inline">Scan</span>
           </button>
@@ -163,10 +164,21 @@ export function Shell() {
 
 const initials = (n: string) => n.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
-function SyncPill({ full, onClick }: { full?: boolean; onClick: () => void }) {
+function SyncPill({ full, compact, onClick }: { full?: boolean; compact?: boolean; onClick: () => void }) {
   const s = useSync();
   const label = !s.online ? `Offline${s.pending ? ` · ${s.pending} queued` : ''}` : s.syncing ? 'Syncing…' : s.failed ? `${s.failed} need attention` : s.pending ? `${s.pending} to sync` : 'All synced';
   const tone = !s.online ? 'amber' : s.failed ? 'red' : 'green';
+  // On a phone the bar is tight: show only the coloured dot (plus a count when something is waiting).
+  if (compact) {
+    const n = s.failed || s.pending;
+    return (
+      <button onClick={onClick} aria-label={label} title={label} className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold text-slate-600 transition hover:bg-black/[.06] active:scale-95">
+        {s.online ? <Cloud className="h-[18px] w-[18px]" /> : <CloudOff className="h-[18px] w-[18px]" />}
+        <span className={cx('h-2 w-2 rounded-full', tone === 'green' ? 'bg-emerald-500' : tone === 'amber' ? 'bg-amber-500' : 'bg-rose-500', s.syncing && 'animate-pulse')} />
+        {n > 0 && <span className="tabular">{n}</span>}
+      </button>
+    );
+  }
   return (
     <button onClick={onClick} className={cx('flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-slate-600 transition active:scale-[.97]',
       full ? 'w-full bg-black/[.05] hover:bg-black/[.08]' : 'bg-black/[.05] hover:bg-black/[.08]')}>

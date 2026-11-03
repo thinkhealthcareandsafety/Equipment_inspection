@@ -13,7 +13,7 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
         <div className="mt-1 text-lg font-bold sm:text-xl">{template.title}</div>
         <div className="mt-1 text-xs italic text-slate-500">{template.subtitle}</div>
       </div>
-      <table className="mt-4 w-full border-collapse">
+      <div className="mt-4 -mx-1 overflow-x-auto px-1"><table className="w-full border-collapse">
         <tbody>
           {HEADER_FIELDS.map((f, i) => (
             <tr key={i}>
@@ -28,10 +28,10 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
 
       <div className="mt-5 font-bold">Equipment-Specific Checks</div>
-      <table className="mt-1 w-full border-collapse">
+      <div className="mt-1 -mx-1 overflow-x-auto px-1"><table className="w-full border-collapse">
         <thead><tr className="bg-[#585858] text-left text-xs text-white">
           <th className="border border-slate-500 px-2 py-1">No.</th><th className="border border-slate-500 px-2 py-1">Inspection / Functional Test</th>
           <th className="border border-slate-500 px-2 py-1">Status (P/F/M/NA/RECT)</th><th className="border border-slate-500 px-2 py-1">Remarks / Measurements</th>
@@ -51,10 +51,10 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
             );
           })}
         </tbody>
-      </table>
+      </table></div>
 
       <div className="mt-5 font-bold">{FUNCTIONAL_TEST_LABELS.section}</div>
-      <table className="mt-1 w-full border-collapse">
+      <div className="mt-1 -mx-1 overflow-x-auto px-1"><table className="w-full border-collapse">
         <tbody>
           <tr><th className="w-[38%] border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.required}</th>
             <td className="border border-slate-500 px-2 py-1"><span className="flex flex-wrap gap-4"><Box on={ft.required === 'yes'}>Yes</Box><Box on={ft.required === 'no'}>No</Box><span>Reference: {ft.reference}</span></span></td></tr>
@@ -64,19 +64,19 @@ export function PaperView({ insp, template }: { insp: Inspection; template: Chec
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{FUNCTIONAL_TEST_LABELS.result}</th>
             <td className="border border-slate-500 px-2 py-1"><span className="flex flex-wrap gap-4"><Box on={ft.result === 'pass'}>Pass</Box><Box on={ft.result === 'fail'}>Fail</Box><Box on={ft.result === 'na'}>Not applicable</Box></span></td></tr>
         </tbody>
-      </table>
+      </table></div>
 
       <div className="mt-5 font-bold">{RESULT_LABELS.section}</div>
       <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1">
         <Box on={insp.result.allPassed}>{RESULT_LABELS.allPassed}</Box><Box on={insp.result.defectsIdentified}>{RESULT_LABELS.defectsIdentified}</Box><Box on={insp.result.retestRequired}>{RESULT_LABELS.retestRequired}</Box>
       </div>
-      <table className="mt-2 w-full border-collapse">
+      <div className="mt-2 -mx-1 overflow-x-auto px-1"><table className="w-full border-collapse">
         <tbody>
           <tr><th className="w-[38%] border border-slate-500 px-2 py-1 text-left">{RESULT_LABELS.correctiveActionRef}</th><td className="border border-slate-500 px-2 py-1">{insp.result.correctiveActionRef}</td></tr>
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{RESULT_LABELS.technicianSignature}</th><td className="border border-slate-500 px-2 py-1"><Sig s={insp.technicianSignature} /></td></tr>
           <tr><th className="border border-slate-500 px-2 py-1 text-left">{RESULT_LABELS.reviewerSignature}</th><td className="border border-slate-500 px-2 py-1"><Sig s={insp.reviewerSignature} /></td></tr>
         </tbody>
-      </table>
+      </table></div>
       <div className="mt-2 text-[11px] italic text-slate-500">P = Pass · F = Fail · M = Maintenance · NA = Not applicable · RECT = Rectified · * Safety-critical item</div>
     </div>
   );

@@ -46,9 +46,9 @@ export function AssetPage() {
   return (
     <>
       <PageHeader back={`/sites/${asset.buildingId}`} eyebrow={`${building?.name}, ${building?.city}`}
-        title={<span className="flex items-center gap-3"><EquipmentAvatar type={asset.equipmentType} tone={asset.status === 'out_of_service' ? 'red' : 'default'} />{asset.assetTag}</span>}
+        title={<span className="flex items-center gap-3"><EquipmentAvatar type={asset.equipmentType} tone={asset.status === 'out_of_service' ? 'red' : 'default'} /><span className="min-w-0 break-all text-[26px] sm:text-[34px]">{asset.assetTag}</span></span>}
         subtitle={<span className="flex flex-wrap items-center gap-2">{EQUIPMENT_LABELS[asset.equipmentType]} <AssetStatusBadge status={asset.status} /> <DueBadge nextDue={asset.nextDueDate} /></span>}
-        actions={can.inspect(user.role) ? <Button variant={needsRetest ? 'danger' : 'primary'} size="lg" icon={<ClipboardCheck className="h-5 w-5" />} onClick={start}>
+        actions={can.inspect(user.role) ? <Button variant={needsRetest ? 'danger' : 'primary'} size="lg" className="w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />} onClick={start}>
           {draft ? 'Continue inspection' : needsRetest ? 'Start re-test' : 'Start inspection'}</Button> : undefined} />
 
       {asset.status === 'out_of_service' && (

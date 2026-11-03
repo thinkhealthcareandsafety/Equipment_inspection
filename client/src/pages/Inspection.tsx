@@ -26,6 +26,9 @@ import { FloorsSheet } from '../components/FloorTools.tsx';
 import { PersonPicker, PhotoStrip, SignaturePad } from '../components/Inputs.tsx';
 import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, haptic, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
 
+/** Plain words under each letter, so nobody has to learn the paper form's codes. */
+const STATUS_WORD: Record<CheckStatus, string> = { P: 'Pass', F: 'Fail', M: 'Service', NA: 'N/A', RECT: 'Fixed' };
+
 const STATUS_STYLE: Record<CheckStatus, string> = {
   P: 'bg-emerald-600 text-white ring-emerald-600',
   F: 'bg-rose-600 text-white ring-rose-600',
@@ -115,7 +118,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
     const n = before.filter((c) => !c.status).length;
     if (!n) return;
     update((d) => ({ ...d, checks: d.checks.map((c) => (c.status ? c : { ...c, status: 'P' })) }));
-    toast(`${n} check${n > 1 ? 's' : ''} marked P — tap any row to change it`, 'info');
+    toast(`${n} check${n > 1 ? 's' : ''} marked Pass. Tap any row to change it.`, 'info');
   };
   const onPhoto = async (no: number | null, blob: Blob) => {
     await flush();
@@ -228,9 +231,9 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
             <div className="flex items-center justify-between gap-3 border-b-[0.5px] border-black/10 px-4 py-3 sm:px-5">
               <div>
                 <div className="text-[19px] font-bold tracking-[-0.02em]">Checks</div>
-                <div className="text-[13px] text-slate-500">P Pass · F Fail · M Maintenance</div>
+                <div className="text-[13px] text-slate-500">Pass · Fail · Service needed · <span className="whitespace-nowrap">More: N/A or Fixed</span></div>
               </div>
-              <Button size="sm" variant="dark" icon={<Check className="h-4 w-4" />} disabled={answered === t.checks.length} onClick={allPass}>All P</Button>
+              <Button size="sm" variant="dark" icon={<Check className="h-4 w-4" />} disabled={answered === t.checks.length} onClick={allPass}>Rest pass</Button>
             </div>
             <div className="divide-y divide-slate-100">
               {t.checks.map((item) => (
@@ -353,8 +356,11 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
   const needsRemark = e.status === 'F' || e.status === 'M' || e.status === 'RECT';
   const btn = (s: CheckStatus, disabled = false) => (
     <button key={s} type="button" disabled={disabled} onClick={() => { haptic(); onSet({ status: s }); }} title={STATUS_LABELS[s]}
-      className={cx('h-[46px] min-w-11 flex-1 rounded-[12px] px-2 text-[17px] font-semibold transition duration-150 active:scale-95 disabled:opacity-30',
-        e.status === s ? STATUS_STYLE[s] : 'bg-black/[.05] text-slate-700 hover:bg-black/[.08]')}>{s}</button>
+      className={cx('flex h-[54px] min-w-11 flex-1 flex-col items-center justify-center rounded-[12px] px-1 leading-none transition duration-150 active:scale-95 disabled:opacity-30',
+        e.status === s ? STATUS_STYLE[s] : 'bg-black/[.05] text-slate-700 hover:bg-black/[.08]')}>
+      <span className="text-[17px] font-semibold">{s === 'RECT' ? 'R' : s}</span>
+      <span className={cx('mt-1 text-[11px] font-medium', e.status === s ? 'text-white/90' : 'text-slate-500')}>{STATUS_WORD[s]}</span>
+    </button>
   );
   return (
     <div id={`chk-${item.no}`} className={cx('px-4 py-3 sm:px-5', e.status === 'F' && 'bg-rose-50/60', statusError && 'bg-rose-50')}>
@@ -366,11 +372,11 @@ function CheckRow({ item, e, onSet, onPhoto, statusError, remarkError }: {
             {item.safetyCritical && <ShieldAlert className="ml-1 inline h-4 w-4 -translate-y-px text-rose-500" aria-label="Safety-critical" />}
           </div>
         </div>
-        <div className="flex gap-1.5 pl-8 sm:w-64 sm:pl-0">
+        <div className="flex gap-1.5 pl-8 sm:w-72 sm:pl-0">
           {btn('P')}{btn('F')}{btn('M')}
           {more ? <>{btn('NA', !item.allowNA)}{btn('RECT')}</> : (
-            <button type="button" onClick={() => setMore(true)} className="h-[46px] w-11 shrink-0 rounded-[12px] bg-black/[.05] text-slate-500 hover:bg-black/[.08] active:scale-95" title="NA / RECT">
-              <Ellipsis className="mx-auto h-5 w-5" />
+            <button type="button" onClick={() => setMore(true)} className="flex h-[54px] w-12 shrink-0 flex-col items-center justify-center rounded-[12px] bg-black/[.05] text-slate-500 hover:bg-black/[.08] active:scale-95" title="Not applicable, or fixed on the spot">
+              <Ellipsis className="h-5 w-5" /><span className="mt-0.5 text-[10px] font-medium">More</span>
             </button>
           )}
         </div>
