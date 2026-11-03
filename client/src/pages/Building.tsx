@@ -9,6 +9,7 @@ import { can, useUser } from '../lib/hooks.ts';
 import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from '../lib/store.ts';
 import { AssetStatusBadge, Badge, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, Field, PageHeader, SearchField, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
+import { textMatches } from '../lib/search.ts';
 import { FloorsSheet } from '../components/FloorTools.tsx';
 import { useDialogs } from '../components/Dialogs.tsx';
 
@@ -47,7 +48,7 @@ export function BuildingPage() {
       if (floorSel === UNASSIGNED ? a.floorId : floorSel && a.floorId !== floorSel) return false;
       if (type && a.equipmentType !== type) return false;
       if (due && (due === 'oos' ? a.status === 'in_service' : dueState(a.nextDueDate) === 'ok')) return false;
-      if (q && !`${a.assetTag} ${a.manufacturer ?? ''} ${a.model ?? ''} ${a.serialNumber ?? ''}`.toLowerCase().includes(q.toLowerCase())) return false;
+      if (q && !textMatches(q, a.assetTag, a.manufacturer, a.model, a.serialNumber, EQUIPMENT_LABELS[a.equipmentType])) return false;
       return true;
     }).sort((a, b) => a.assetTag.localeCompare(b.assetTag, undefined, { numeric: true }));
   }, [data, floorSel, type, due, q]);

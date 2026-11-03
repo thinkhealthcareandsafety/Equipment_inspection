@@ -5,6 +5,7 @@ import { useAllData } from '../lib/hooks.ts';
 import { buildReport, EMPTY_FILTERS } from '../lib/reports.ts';
 import { Bar, Card, Chip, Empty, PageHeader, SearchField } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
+import { textMatches } from '../lib/search.ts';
 
 /** Sites as grouped lists, one group per city, like Settings. */
 export function Sites() {
@@ -18,7 +19,7 @@ export function Sites() {
   const byCity = new Map<string, typeof report.groups>();
   for (const g of report.groups) {
     if (city && g.sub !== city) continue;
-    if (q && !`${g.label} ${g.sub}`.toLowerCase().includes(q.toLowerCase())) continue;
+    if (q && !textMatches(q, g.label, g.sub)) continue;
     byCity.set(g.sub, [...(byCity.get(g.sub) ?? []), g]);
   }
 

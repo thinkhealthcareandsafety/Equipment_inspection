@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ClipboardCheck, Search } from 'lucide-react';
-import { formatDate, type InspectionStatus } from '@think/shared';
+import { formatDate, REVIEW_REQUIRED, type InspectionStatus } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
 import { Card, Chip, Empty, EquipmentAvatar, InspectionStatusBadge, PageHeader, Badge } from '../components/ui.tsx';
@@ -10,20 +10,25 @@ import { Card, Chip, Empty, EquipmentAvatar, InspectionStatusBadge, PageHeader, 
 export function Inspections() {
   const user = useUser();
   const reviewer = can.review(user.role);
-  const [tab, setTab] = useState<InspectionStatus | 'mine'>(reviewer ? 'submitted' : 'mine');
+  const waiting = useLiveQuery(() => db.inspections.where('status').equals('submitted').count(), []) ?? 0;
+  const [tab, setTab] = useState<InspectionStatus | 'mine' | null>(null);
   const [q, setQ] = useState('');
   const all = useLiveQuery(() => db.inspections.orderBy('updatedAt').reverse().toArray(), []) ?? [];
-  const filter = (s: typeof tab) => all.filter((i) => s === 'mine' ? (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id : i.status === s);
-  const rows = filter(tab).filter((i) => !q || `${i.header.equipmentAssetId} ${i.header.customerSite} ${i.header.technician}`.toLowerCase().includes(q.toLowerCase()));
-  const tabs: { id: typeof tab; label: string }[] = [
-    { id: 'mine', label: 'My open' }, { id: 'submitted', label: 'Awaiting review' }, { id: 'returned', label: 'Returned' }, { id: 'finalized', label: 'Finalised' }, { id: 'draft', label: 'All drafts' },
+  const filter = (s: InspectionStatus | 'mine') => all.filter((i) => s === 'mine' ? (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id : i.status === s);
+  const current = tab ?? (reviewer && waiting ? 'submitted' : 'finalized');
+  const rows = filter(current).filter((i) => !q || `${i.header.equipmentAssetId} ${i.header.customerSite} ${i.header.technician}`.toLowerCase().includes(q.toLowerCase()));
+  // Signing makes an inspection final, so the approval tabs only appear while older ones still wait.
+  const tabs: { id: InspectionStatus | 'mine'; label: string }[] = [
+    { id: 'finalized', label: 'Done' }, { id: 'mine', label: 'My unfinished' }, { id: 'draft', label: 'All unfinished' },
+    ...(waiting || REVIEW_REQUIRED ? [{ id: 'submitted' as const, label: 'Waiting for approval' }] : []),
+    ...(filter('returned').length ? [{ id: 'returned' as const, label: 'Returned' }] : []),
   ];
   return (
     <>
-      <PageHeader title="Inspections" subtitle={reviewer ? 'Review submitted inspections and track work in progress' : 'Your drafts, submissions and history'} />
+      <PageHeader title="Inspections" subtitle="Every inspection done, and any still in progress. Tap one for its certificate." />
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          {tabs.map((t) => <Chip key={t.id} active={tab === t.id} onClick={() => setTab(t.id)} count={filter(t.id).length}>{t.label}</Chip>)}
+          {tabs.map((t) => <Chip key={t.id} active={current === t.id} onClick={() => setTab(t.id)} count={filter(t.id).length}>{t.label}</Chip>)}
         </div>
         <div className="relative sm:ml-auto sm:w-72">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

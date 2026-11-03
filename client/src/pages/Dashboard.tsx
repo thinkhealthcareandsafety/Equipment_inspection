@@ -1,158 +1,163 @@
 /**
- * Home: find anything in one search, continue open work, and see only the
- * numbers that need action. Each number opens the matching report.
+ * Home, in plain words. It answers three questions:
+ *  1. Where do we stand?   one sentence and one progress bar for the quarter
+ *  2. What do I do now?    pick a site, find a unit, or scan its QR label
+ *  3. What needs me?       approvals, unfinished inspections, units that must not be used
+ * Then the round by city, today's work and the sites with the most left to do.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ChevronRight, ClipboardCheck, MapPin } from 'lucide-react';
+import { Building2, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
 import { dueState, EQUIPMENT_LABELS, formatDate, todayISO } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
-import { buildReport, EMPTY_FILTERS, roundText, roundTone } from '../lib/reports.ts';
-import { Bar, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge, SearchField } from '../components/ui.tsx';
+import { buildReport, EMPTY_FILTERS, periodLabel } from '../lib/reports.ts';
+import { Button, Card, cx, Empty, InspectionStatusBadge } from '../components/ui.tsx';
+import { GlobalSearch } from '../components/GlobalSearch.tsx';
 
 export function Dashboard() {
   const user = useUser();
   const data = useAllData();
   const nav = useNavigate();
-  const [q, setQ] = useState('');
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
   const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
-  if (!data.assets.length) return <Empty title="Downloading your sites…" icon={<ClipboardCheck className="h-6 w-6" />}>The first sync downloads every site and asset so you can work offline.</Empty>;
+  if (!data.assets.length) return <Empty title="Downloading your sites…" icon={<ClipboardCheck className="h-6 w-6" />}>The first sync downloads every site and unit so you can work offline.</Empty>;
 
   const bById = new Map(data.buildings.map((b) => [b.id, b]));
   const k = report.kpis;
-  const toInspect = report.toInspect.length;
+  const total = k.assets;
+  const done = k.inDate;
+  const outList = data.assets.filter((a) => a.status === 'out_of_service');
+  const overdue = data.assets.filter((a) => a.status !== 'out_of_service' && dueState(a.nextDueDate) === 'overdue').length;
   const mine = data.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id)
     .sort((a, b) => Number(b.status === 'returned') - Number(a.status === 'returned') || b.updatedAt.localeCompare(a.updatedAt));
   const reviewQueue = can.review(user.role) ? data.inspections.filter((i) => i.status === 'submitted') : [];
 
-  // Sites with the most work to do this cycle.
-  const sites = data.buildings.map((b) => {
-    const list = data.assets.filter((a) => a.buildingId === b.id);
-    return { b, todo: list.filter((a) => dueState(a.nextDueDate) !== 'ok').length, oos: list.filter((a) => a.status === 'out_of_service').length, total: list.length };
-  }).filter((s) => s.todo || s.oos).sort((a, b) => b.oos - a.oos || b.todo - a.todo).slice(0, 6);
-
-  const term = q.trim().toLowerCase();
-  const results = term.length < 2 ? [] : [
-    ...data.buildings.filter((b) => `${b.name} ${b.city}`.toLowerCase().includes(term)).slice(0, 4).map((b) => ({ key: b.id, to: `/sites/${b.id}`, title: b.name, sub: `Site · ${b.city}`, type: null })),
-    ...data.assets.filter((a) => `${a.assetTag} ${a.serialNumber ?? ''} ${a.manufacturer ?? ''}`.toLowerCase().includes(term)).slice(0, 6)
-      .map((a) => ({ key: a.id, to: `/assets/${a.id}`, title: a.assetTag, sub: `${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}`, type: a.equipmentType })),
-  ];
-
-  // Today's work by person, for the manager: who inspected how many, and how many failed.
+  // Today's work by person
   const today = todayISO();
-  const doneToday = data.inspections.filter((i) => i.status !== 'draft' && i.header.inspectionDate === today);
-  const people = [...doneToday.reduce((m, i) => {
+  const people = [...data.inspections.filter((i) => i.status !== 'draft' && i.header.inspectionDate === today).reduce((m, i) => {
     const name = i.header.technician || 'Unknown';
     const r = m.get(name) ?? { name, count: 0, fails: 0 };
     r.count++; if (i.result.defectsIdentified) r.fails++;
     return m.set(name, r);
   }, new Map<string, { name: string; count: number; fails: number }>()).values()].sort((a, b) => b.count - a.count);
 
-  const rt = roundTone(k);
-  const tiles = [
-    { label: 'This round', value: k.inDate, sub: roundText(k), tone: rt, bar: k.compliance, to: '/reports' },
-    { label: 'To inspect', value: toInspect, sub: k.overdue ? `${k.overdue} overdue` : 'None overdue', tone: k.overdue ? 'red' : 'neutral', to: '/reports?view=due' },
-    { label: 'Out of service', value: k.outOfService, sub: 'Do not use until re-tested', tone: k.outOfService ? 'red' : 'green', to: '/reports?view=oos' },
-    { label: 'Open defects', value: k.openDefects, sub: `${k.safetyCritical} safety-critical`, tone: k.openDefects ? 'red' : 'green', to: '/reports?view=defects' },
-  ] as const;
+  // Sites with the most left to do
+  const sites = data.buildings.map((b) => {
+    const list = data.assets.filter((a) => a.buildingId === b.id);
+    return { b, todo: list.filter((a) => dueState(a.nextDueDate) !== 'ok').length, oos: list.filter((a) => a.status === 'out_of_service').length, total: list.length };
+  }).filter((s) => s.todo || s.oos).sort((a, b) => b.oos - a.oos || b.todo - a.todo).slice(0, 5);
+
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  const quarter = periodLabel('quarter');
+  const attention = reviewQueue.length + mine.length + outList.length + (overdue ? 1 : 0);
 
   return (
     <div className="mx-auto max-w-4xl">
       <div className="text-[13px] font-semibold uppercase tracking-[0.05em] text-slate-500">{formatDate(todayISO())}</div>
-      <h1 className="text-[34px] font-bold leading-[1.1] tracking-[-0.03em]">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
-      <div className="mt-1 text-[16px] text-slate-500">{data.buildings.length} sites · {k.assets} assets</div>
+      <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
 
-      <div className="relative mt-5">
-        <SearchField id="home-search" value={q} onChange={setQ} placeholder="Search asset ID, site or make" />
-        {results.length > 0 && (
-          <Card className="animate-pop absolute inset-x-0 top-full z-20 mt-2 overflow-hidden shadow-lift">
-            <div className="divide-y">
-              {results.map((r) => (
-                <Link key={r.key} to={r.to} className="row-press flex items-center gap-3 px-4 py-2.5">
-                  {r.type ? <EquipmentAvatar type={r.type} /> : <div className="grid h-10 w-10 place-items-center rounded-[10px] bg-slate-500 text-white"><MapPin className="h-[22px] w-[22px]" /></div>}
-                  <div><div className="text-[17px] font-medium">{r.title}</div><div className="text-[14px] text-slate-500">{r.sub}</div></div>
-                </Link>
-              ))}
-            </div>
-          </Card>
-        )}
-        {term.length >= 2 && results.length === 0 && <div className="mt-2 px-1 text-[15px] text-slate-500">Nothing matches “{q}”.</div>}
+      {/* 1. Where do we stand */}
+      <p data-summary className="mt-2 max-w-2xl text-[17px] leading-relaxed text-slate-600">
+        {done === 0 ? <>No unit has been inspected yet this quarter. <strong className="text-slate-900">{total} units</strong> at {data.buildings.length} sites are waiting.</>
+          : <><strong className="text-slate-900">{done} of {total} units</strong> are inspected and in date ({pct}%).</>}
+        {outList.length > 0 && <> <span className="font-semibold text-rose-600">{outList.length} {outList.length === 1 ? 'unit is' : 'units are'} out of service</span> and must not be used.</>}
+      </p>
+
+      {/* 2. What do I do now */}
+      <div className="mt-5 grid grid-cols-2 gap-3 sm:flex">
+        <Button size="lg" variant="primary" className="whitespace-nowrap !px-3 sm:!px-6" icon={<Building2 className="h-5 w-5 shrink-0" />} onClick={() => nav('/sites')}>Pick a site</Button>
+        <Button size="lg" className="whitespace-nowrap !px-3 sm:!px-6" icon={<ScanLine className="h-5 w-5 shrink-0" />} onClick={() => window.dispatchEvent(new Event('think:scan'))}>Scan label</Button>
       </div>
+      <div className="mt-3"><GlobalSearch data={data} /></div>
+      <Link to="/help" className="mt-3 inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
 
-      {reviewQueue.length > 0 && <WorkList title={`Waiting for your review · ${reviewQueue.length}`} items={reviewQueue} />}
-      {can.inspect(user.role) && mine.length > 0 && <WorkList title="Continue" items={mine} />}
-
-      <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {tiles.map((t) => (
-          <button key={t.label} data-tile={t.label} onClick={() => nav(t.to)} className="card p-4 text-left transition duration-200 ease-out hover:-translate-y-0.5 hover:shadow-lift active:scale-[.98]">
-            <div className="text-[13px] font-medium text-slate-500">{t.label}</div>
-            <div data-value className={cx('mt-1.5 flex h-[38px] items-baseline text-[34px] font-bold leading-none tracking-[-0.03em] tabular', t.tone === 'red' ? 'text-rose-600' : t.tone === 'green' ? 'text-emerald-600' : 'text-slate-900')}>{t.value}{t.label === 'This round' && <span className="text-[17px] font-medium tracking-normal text-slate-400"> / {k.assets}</span>}</div>
-            {'bar' in t && <div className="mt-2.5"><Bar value={t.bar} tone="brand" /></div>}
-            <div className="mt-2 text-[13px] text-slate-500">{t.sub}</div>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <div>
-          <div className="mb-2 flex items-baseline justify-between px-1">
-            <div className="text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">Round by city</div>
-            <Link to="/reports" className="text-[15px] font-medium text-brand-700">Report</Link>
-          </div>
+      {/* 3. What needs me */}
+      {attention > 0 && (
+        <>
+          <Caption>Needs attention</Caption>
           <Card className="overflow-hidden">
             <div className="divide-y">
-              {(byCity ?? []).map((c) => (
-                <Link key={c.key} to={`/reports?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
-                  <div className="truncate text-[16px] font-semibold tracking-[-0.01em]">{c.label}</div>
-                  <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} in date, ${c.outOfService} out of service`}>
-                    <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, c.inDate - c.outOfService) / Math.max(c.assets, 1)) * 100}%` }} />
-                    <span className="h-full bg-rose-500" style={{ width: `${(c.outOfService / Math.max(c.assets, 1)) * 100}%` }} />
-                  </div>
-                  <div className="text-right text-[14px] tabular text-slate-500">
-                    {c.inDate}/{c.assets}{c.outOfService > 0 && <span className="ml-1.5 font-semibold text-rose-600">· {c.outOfService} out</span>}
-                  </div>
-                </Link>
+              {reviewQueue.length > 0 && (
+                <Row to="/inspections" tone="blue" icon={<PenLine className="h-5 w-5" />}
+                  title={`${reviewQueue.length} ${reviewQueue.length === 1 ? 'inspection is' : 'inspections are'} waiting for your approval`}
+                  sub="Open, check and approve to issue the certificate" />
+              )}
+              {mine.slice(0, 3).map((i) => (
+                <Row key={i.id} to={`/inspections/${i.id}`} tone={i.status === 'returned' ? 'amber' : 'slate'} icon={<ClipboardCheck className="h-5 w-5" />}
+                  title={`${i.status === 'returned' ? 'Fix and resubmit' : 'Finish'}: ${i.header.equipmentAssetId}`}
+                  sub={`${i.header.customerSite} · ${i.checks.filter((c) => c.status).length} of ${i.checks.length} checks done`}
+                  right={<InspectionStatusBadge status={i.status} />} />
               ))}
+              {outList.slice(0, 4).map((a) => (
+                <Row key={a.id} to={`/assets/${a.id}`} tone="red" icon={<ShieldAlert className="h-5 w-5" />}
+                  title={`Do not use: ${a.assetTag}`}
+                  sub={`${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}, ${bById.get(a.buildingId)?.city} · ${a.statusReason ?? 'Out of service'}`} />
+              ))}
+              {outList.length > 4 && <Row to="/reports?view=oos" tone="red" icon={<ShieldAlert className="h-5 w-5" />} title={`${outList.length - 4} more out of service`} sub="See the full list" />}
+              {overdue > 0 && <Row to="/reports?view=due" tone="amber" icon={<ClipboardCheck className="h-5 w-5" />} title={`${overdue} ${overdue === 1 ? 'unit is' : 'units are'} overdue for inspection`} sub="Last inspected more than 90 days ago" />}
             </div>
           </Card>
-          <div className="mt-2 flex gap-4 px-1 text-[12px] text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Inspected, in date</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Out of service</span>
-            <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-slate-200" />Still to do</span>
-          </div>
-        </div>
-        <div>
-          <div className="mb-2 px-1 text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">Today</div>
-          <Card className="overflow-hidden">
-            {people.length === 0 ? <div className="px-4 py-5 text-[15px] text-slate-500">No inspections submitted today yet.</div> : (
-              <div className="divide-y">
-                {people.map((p) => (
-                  <div key={p.name} className="flex items-center gap-3 px-4 py-3">
-                    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/[.13] text-[13px] font-semibold text-brand-700">{p.name.split(/\s+/).map((x) => x[0]).slice(0, 2).join('').toUpperCase()}</div>
-                    <div className="min-w-0 flex-1 truncate text-[16px] font-semibold">{p.name}</div>
-                    <div className="text-[14px] tabular text-slate-500">{p.count} inspected{p.fails > 0 && <span className="font-semibold text-rose-600"> · {p.fails} failed</span>}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </div>
-      </div>
+        </>
+      )}
 
-      <div className="mb-2 mt-8 flex items-baseline justify-between px-1">
-        <div className="text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">Sites with work to do</div>
-        <Link to="/sites" className="text-[15px] font-medium text-brand-700">See all</Link>
-      </div>
+      {/* This quarter, by city */}
+      <Caption right={<Link to="/reports" className="text-[15px] font-medium text-brand-700">Full report</Link>}>{quarter}</Caption>
       <Card className="overflow-hidden">
-        {sites.length === 0 ? <Empty title="All sites are up to date" /> : (
+        <div className="px-4 pb-3 pt-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="text-[17px] font-semibold">{done} of {total} inspected</div>
+            <div className="text-[15px] tabular text-slate-500">{pct}%</div>
+          </div>
+          <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-slate-200/80">
+            <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, done - outList.length) / Math.max(total, 1)) * 100}%` }} />
+            <span className="h-full bg-rose-500" style={{ width: `${(outList.length / Math.max(total, 1)) * 100}%` }} />
+          </div>
+        </div>
+        <div className="divide-y border-t">
+          {(byCity ?? []).map((c) => (
+            <Link key={c.key} to={`/reports?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+              <div className="truncate text-[16px] font-medium">{c.label}</div>
+              <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} inspected, ${c.outOfService} out of service`}>
+                <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, c.inDate - c.outOfService) / Math.max(c.assets, 1)) * 100}%` }} />
+                <span className="h-full bg-rose-500" style={{ width: `${(c.outOfService / Math.max(c.assets, 1)) * 100}%` }} />
+              </div>
+              <div className="text-right text-[14px] tabular text-slate-500">{c.inDate} of {c.assets}</div>
+            </Link>
+          ))}
+        </div>
+      </Card>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 px-1 text-[12px] text-slate-500">
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Inspected</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Out of service</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-slate-200" />Still to do</span>
+      </div>
+
+      {people.length > 0 && (
+        <>
+          <Caption>Inspected today</Caption>
+          <Card className="overflow-hidden">
+            <div className="divide-y">
+              {people.map((p) => (
+                <div key={p.name} className="flex items-center gap-3 px-4 py-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-brand-500/[.13] text-[13px] font-semibold text-brand-700">{p.name.split(/\s+/).map((x) => x[0]).slice(0, 2).join('').toUpperCase()}</div>
+                  <div className="min-w-0 flex-1 truncate text-[16px] font-semibold">{p.name}</div>
+                  <div className="text-[14px] tabular text-slate-500">{p.count} {p.count === 1 ? 'unit' : 'units'}{p.fails > 0 && <span className="font-semibold text-rose-600"> · {p.fails} with problems</span>}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </>
+      )}
+
+      <Caption right={<Link to="/sites" className="text-[15px] font-medium text-brand-700">All sites</Link>}>Sites with the most left to do</Caption>
+      <Card className="overflow-hidden">
+        {sites.length === 0 ? <Empty title="Every site is up to date" /> : (
           <div className="divide-y">
-            {sites.map(({ b, todo, oos, total }) => (
+            {sites.map(({ b, todo, oos, total: n }) => (
               <Link key={b.id} to={`/sites/${b.id}`} className="row-press flex items-center gap-3 px-4 py-3.5">
-                <div className="min-w-0 flex-1"><div className="truncate text-[17px] font-semibold tracking-[-0.01em]">{b.name}</div><div className="text-[14px] text-slate-500">{b.city} · {total} assets</div></div>
-                {oos > 0 && <span className="rounded-full bg-rose-500/[.12] px-2.5 py-1 text-[12px] font-semibold text-rose-600">{oos} out of service</span>}
-                <span className="text-[15px] font-medium tabular text-slate-500">{todo}</span>
+                <div className="min-w-0 flex-1"><div className="truncate text-[17px] font-semibold tracking-[-0.01em]">{b.name}</div><div className="text-[14px] text-slate-500">{b.city} · {todo} of {n} still to inspect</div></div>
+                {oos > 0 && <span className="rounded-full bg-rose-500/[.12] px-2.5 py-1 text-[12px] font-semibold text-rose-600">{oos} do not use</span>}
                 <ChevronRight className="h-5 w-5 text-slate-300" />
               </Link>
             ))}
@@ -163,25 +168,28 @@ export function Dashboard() {
   );
 }
 
-function WorkList({ title, items }: { title: string; items: import('@think/shared').Inspection[] }) {
+function Caption({ children, right }: { children: ReactNode; right?: ReactNode }) {
   return (
-    <>
-      <div className="mb-2 mt-7 px-1 text-[13px] font-medium uppercase tracking-[0.04em] text-slate-500">{title}</div>
-      <Card className="overflow-hidden">
-        <div className="divide-y">
-          {items.slice(0, 5).map((i) => (
-            <Link key={i.id} to={`/inspections/${i.id}`} className="row-press flex items-center gap-3 px-4 py-3">
-              <EquipmentAvatar type={i.templateId} tone={i.status === 'returned' ? 'amber' : 'default'} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[17px] font-semibold tracking-[-0.01em]">{i.header.equipmentAssetId}</div>
-                <div className="truncate text-[14px] text-slate-500">{i.header.customerSite}{i.header.siteLocationDepartment ? ` · ${i.header.siteLocationDepartment}` : ''} · {i.checks.filter((c) => c.status).length}/{i.checks.length} checks</div>
-              </div>
-              <InspectionStatusBadge status={i.status} />
-            </Link>
-          ))}
-        </div>
-      </Card>
-    </>
+    <div className="mb-2 mt-8 flex items-baseline justify-between gap-3 px-1">
+      <div className="text-[13px] font-semibold uppercase tracking-[0.04em] text-slate-500">{children}</div>
+      {right}
+    </div>
+  );
+}
+
+const TONES = { red: 'bg-rose-500/[.12] text-rose-600', amber: 'bg-amber-500/[.16] text-amber-700', blue: 'bg-sky-500/[.14] text-sky-700', slate: 'bg-black/[.06] text-slate-600' } as const;
+
+function Row({ to, tone, icon, title, sub, right }: { to: string; tone: keyof typeof TONES; icon: ReactNode; title: string; sub: string; right?: ReactNode }) {
+  return (
+    <Link to={to} className="row-press flex items-center gap-3 px-4 py-3">
+      <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-[11px]', TONES[tone])}>{icon}</span>
+      <div className="min-w-0 flex-1">
+        <div className="line-clamp-2 text-[16px] font-semibold leading-snug tracking-[-0.01em]">{title}</div>
+        <div className="line-clamp-2 text-[14px] text-slate-500">{sub}</div>
+      </div>
+      {right}
+      <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+    </Link>
   );
 }
 

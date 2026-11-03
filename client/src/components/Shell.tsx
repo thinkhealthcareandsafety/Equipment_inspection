@@ -1,14 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LogOut, RefreshCw, ScanLine, Settings, Users,
+  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Settings, Users,
 } from 'lucide-react';
 import { ScanSheet } from './ScanSheet.tsx';
 import { formatDateTime } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
-import { TeamSheet } from './Inputs.tsx';
+import { PickPersonSheet } from './Inputs.tsx';
 import { can, useUser } from '../lib/hooks.ts';
 import { discardFailed, retryFailed, syncNow, useSync } from '../lib/sync.ts';
 import { Badge, Button, cx, Sheet } from './ui.tsx';
@@ -37,14 +37,24 @@ export function Shell() {
   const nav: NavItem[] = [
     { to: '/', label: 'Home', icon: <LayoutDashboard className="h-5 w-5" />, show: true },
     { to: '/sites', label: 'Sites', icon: <Building2 className="h-5 w-5" />, show: true },
-    { to: '/inspections', label: 'Review', icon: <ClipboardCheck className="h-5 w-5" />, show: can.review(user.role), badge: reviewCount },
     { to: '/reports', label: 'Reports', icon: <ChartColumn className="h-5 w-5" />, show: true },
+    { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: can.review(user.role), badge: reviewCount },
     { to: '/inspections', label: 'My inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: user.role === 'inspector', badge: myDrafts },
     { to: '/team', label: 'Team', icon: <Users className="h-5 w-5" />, show: can.team(user.role) },
     { to: '/admin', label: 'Admin', icon: <Settings className="h-5 w-5" />, show: can.admin(user.role) },
+    { to: '/help', label: 'How to use', icon: <LifeBuoy className="h-5 w-5" />, show: true },
   ].filter((n) => n.show);
-  const primary = nav.filter((n) => ['Home', 'Sites', 'Review', 'Reports'].includes(n.label));
+  // Phone tab bar: Home, Sites, a big Scan button, Reports, More. Everything else lives in More.
+  const primary = nav.filter((n) => ['Home', 'Sites', 'Reports'].includes(n.label));
   const secondary = nav.filter((n) => !primary.includes(n));
+  const moreBadge = secondary.reduce((s, n) => s + (n.badge ?? 0), 0);
+
+  // Any screen can open the scanner (Home's big Scan button) without prop drilling.
+  useEffect(() => {
+    const open = () => setScanOpen(true);
+    window.addEventListener('think:scan', open);
+    return () => window.removeEventListener('think:scan', open);
+  }, []);
 
   const chooseName = (name: string) => {
     const s = getSession();
@@ -70,10 +80,14 @@ export function Shell() {
             <div className="text-[13px] text-slate-500">Healthcare and Safety</div>
           </div>
         </div>
+        <div className="px-3 pb-3">
+          <Button variant="primary" className="w-full" icon={<ScanLine className="h-5 w-5" />} onClick={() => setScanOpen(true)}>Scan a unit</Button>
+        </div>
         <nav className="flex-1 space-y-0.5 px-3">
           {nav.map((n) => (
             <div key={n.label}>
               {n.label === 'Team' && <div className="px-3 pb-1.5 pt-5 text-[12px] font-semibold uppercase tracking-[0.05em] text-slate-400">Manage</div>}
+              {n.label === 'How to use' && <div className="pt-5" />}
               <NavLink to={n.to} end={n.to === '/'} className={({ isActive }) => cx('flex items-center gap-3 rounded-[10px] px-3 py-2 text-[16px] transition-colors duration-150',
                 isActive ? 'bg-brand-500/[.13] font-semibold text-brand-700' : 'font-medium text-slate-700 hover:bg-black/[.045] active:bg-black/[.08]')}>
                 {n.icon}<span className="flex-1">{n.label}</span>
@@ -100,16 +114,13 @@ export function Shell() {
       {/* Top bar */}
       <header className="material-canvas sticky top-0 z-20 border-b-[0.5px] border-black/10">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-10">
-          <div className="flex items-center gap-2.5 lg:hidden">
-            <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 rounded-[9px]" alt="" />
-            <span className="text-[17px] font-semibold tracking-[-0.01em]">Think Inspect</span>
+          <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+            <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 shrink-0 rounded-[9px]" alt="" />
+            <span className="truncate whitespace-nowrap text-[17px] font-semibold tracking-[-0.01em]">Think Inspect</span>
           </div>
           <div className="flex-1" />
           {IS_DEMO && <span className="hidden rounded-full bg-amber-500/[.16] px-3 py-1 text-[13px] font-medium text-amber-700 sm:inline">Demo · your entries stay in this browser</span>}
-          <div className="lg:hidden"><SyncPill onClick={() => setSyncOpen(true)} /></div>
-          <button onClick={() => setScanOpen(true)} className="flex h-10 items-center gap-2 rounded-full px-2.5 text-slate-700 transition hover:bg-black/[.06] active:scale-95 sm:px-3.5" aria-label="Scan a QR label">
-            <ScanLine className="h-[22px] w-[22px]" /><span className="hidden text-[15px] font-semibold sm:inline">Scan</span>
-          </button>
+          <div className="lg:hidden"><SyncPill compact onClick={() => setSyncOpen(true)} /></div>
           <button onClick={() => setNotesOpen(true)} className="relative grid h-10 w-10 place-items-center rounded-full text-slate-600 transition hover:bg-black/[.06] active:scale-95" aria-label="Notifications">
             <Bell className="h-[22px] w-[22px]" />
             {unread > 0 && <span className="absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-canvas">{unread}</span>}
@@ -123,16 +134,21 @@ export function Shell() {
 
       {/* Mobile tab bar */}
       <nav className="material safe-bottom fixed inset-x-0 bottom-0 z-30 border-t-[0.5px] border-black/10 lg:hidden">
-        <div className="mx-auto grid max-w-lg px-2 pt-1.5" style={{ gridTemplateColumns: `repeat(${primary.length + 1}, minmax(0, 1fr))` }}>
-          {primary.map((n) => (
+        <div className="mx-auto grid max-w-lg grid-cols-5 px-2 pt-1.5">
+          {[...primary.slice(0, 2), null, ...primary.slice(2)].map((n) => n === null ? (
+            <button key="scan" onClick={() => setScanOpen(true)} className="flex flex-col items-center gap-0.5 py-1 text-[10.5px] font-semibold text-brand-700 transition active:scale-95" aria-label="Scan a unit's QR label">
+              <span className="-mt-5 grid h-[52px] w-[52px] place-items-center rounded-[16px] bg-brand-600 text-white shadow-lift"><ScanLine className="h-[26px] w-[26px]" /></span>Scan
+            </button>
+          ) : (
             <NavLink key={n.label} to={n.to} end={n.to === '/'} className={({ isActive }) => cx('relative flex flex-col items-center gap-0.5 rounded-xl py-1 text-[10.5px] font-medium transition active:scale-95',
               isActive ? 'text-brand-700' : 'text-slate-500')}>
               <span className="[&_svg]:h-[26px] [&_svg]:w-[26px]">{n.icon}</span>{n.label}
               {!!n.badge && <span className="absolute right-[22%] top-0 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">{n.badge}</span>}
             </NavLink>
           ))}
-          <button onClick={() => setMore(true)} className="flex flex-col items-center gap-0.5 py-1 text-[10.5px] font-medium text-slate-500 transition active:scale-95">
+          <button onClick={() => setMore(true)} className="relative flex flex-col items-center gap-0.5 py-1 text-[10.5px] font-medium text-slate-500 transition active:scale-95">
             <Ellipsis className="h-[26px] w-[26px]" />More
+            {moreBadge > 0 && <span className="absolute right-[22%] top-0 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white">{moreBadge}</span>}
           </button>
         </div>
       </nav>
@@ -141,7 +157,9 @@ export function Shell() {
         <div className="card divide-y overflow-hidden !bg-slate-100/70 !shadow-none">
           {secondary.map((n) => (
             <NavLink key={n.label} to={n.to} onClick={() => setMore(false)} className="row-press flex items-center gap-3 bg-white px-4 py-3.5 text-[17px] font-medium text-slate-900">
-              <span className="text-brand-600">{n.icon}</span><span className="flex-1">{n.label}</span><ChevronRight className="h-5 w-5 text-slate-300" />
+              <span className="text-brand-600">{n.icon}</span><span className="flex-1">{n.label}</span>
+              {!!n.badge && <span className="grid h-6 min-w-6 place-items-center rounded-full bg-rose-500 px-2 text-[13px] font-semibold text-white">{n.badge}</span>}
+              <ChevronRight className="h-5 w-5 text-slate-300" />
             </NavLink>
           ))}
           <button onClick={() => { setMore(false); setWhoOpen(true); }} className="row-press flex w-full items-center gap-3 bg-white px-4 py-3 text-left">
@@ -153,7 +171,8 @@ export function Shell() {
         <button onClick={signOut} className="row-press mt-4 flex w-full items-center justify-center gap-2 rounded-[14px] bg-black/[.05] py-3.5 text-[17px] font-semibold text-rose-600"><LogOut className="h-5 w-5" />Lock the app</button>
       </Sheet>
 
-      <TeamSheet open={whoOpen || (unnamed && !whoSkipped)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }} onPick={chooseName} title="Who is using this device?" />
+      <PickPersonSheet open={whoOpen || (unnamed && !whoSkipped && !!sync.lastSyncAt)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }}
+        onPick={chooseName} current={unnamed ? undefined : user.name} title="Who is using this device?" />
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />
       <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
@@ -163,10 +182,21 @@ export function Shell() {
 
 const initials = (n: string) => n.split(/\s+/).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
 
-function SyncPill({ full, onClick }: { full?: boolean; onClick: () => void }) {
+function SyncPill({ full, compact, onClick }: { full?: boolean; compact?: boolean; onClick: () => void }) {
   const s = useSync();
   const label = !s.online ? `Offline${s.pending ? ` · ${s.pending} queued` : ''}` : s.syncing ? 'Syncing…' : s.failed ? `${s.failed} need attention` : s.pending ? `${s.pending} to sync` : 'All synced';
   const tone = !s.online ? 'amber' : s.failed ? 'red' : 'green';
+  // On a phone the bar is tight: show only the coloured dot (plus a count when something is waiting).
+  if (compact) {
+    const n = s.failed || s.pending;
+    return (
+      <button onClick={onClick} aria-label={label} title={label} className="flex h-10 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold text-slate-600 transition hover:bg-black/[.06] active:scale-95">
+        {s.online ? <Cloud className="h-[18px] w-[18px]" /> : <CloudOff className="h-[18px] w-[18px]" />}
+        <span className={cx('h-2 w-2 rounded-full', tone === 'green' ? 'bg-emerald-500' : tone === 'amber' ? 'bg-amber-500' : 'bg-rose-500', s.syncing && 'animate-pulse')} />
+        {n > 0 && <span className="tabular">{n}</span>}
+      </button>
+    );
+  }
   return (
     <button onClick={onClick} className={cx('flex items-center gap-2 rounded-full px-3 py-1.5 text-[13px] font-medium text-slate-600 transition active:scale-[.97]',
       full ? 'w-full bg-black/[.05] hover:bg-black/[.08]' : 'bg-black/[.05] hover:bg-black/[.08]')}>

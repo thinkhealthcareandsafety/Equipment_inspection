@@ -1,7 +1,7 @@
 /** All writes go through here: local DB first, then the sync outbox. */
 import {
   addDays, applyDerivedResult, assetAfterInspection, DEFAULT_TEMPLATES, dueState, emptyChecks, emptyFunctionalTest,
-  normalizeFunctionalTest, todayISO, uuid,
+  normalizeFunctionalTest, REVIEW_REQUIRED, todayISO, uuid,
   type Asset, type ChecklistTemplate, type EquipmentType, type Inspection, type InspectionEvent, type Signature, type TeamMember, type User,
 } from '@think/shared';
 import { db } from './db.ts';
@@ -112,8 +112,9 @@ export async function saveInspection(next: Inspection, user: User, extraEvent?: 
 }
 
 export async function submitInspection(insp: Inspection, signature: Signature, user: User) {
-  const doc = await saveInspection({ ...insp, status: 'submitted', technicianSignature: signature }, user,
-    { action: 'submit', to: 'submitted' });
+  const status = REVIEW_REQUIRED ? 'submitted' : 'finalized';
+  const doc = await saveInspection({ ...insp, status, technicianSignature: signature }, user,
+    { action: 'submit', to: status });
   // Apply the asset consequence locally straight away so the floor view is right even offline.
   const asset = await db.assets.get(insp.assetId);
   if (asset) {

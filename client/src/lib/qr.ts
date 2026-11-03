@@ -38,11 +38,35 @@ const TEAL: [number, number, number] = [19, 163, 139];
 const EDGE: [number, number, number] = [210, 214, 220];
 
 /**
+ * Draws a QR code as filled squares (vector), not a picture. A picture per label made a
+ * 50-label sheet about 12 MB and slow to open on a phone; squares keep it small and print
+ * perfectly sharp at any size. Runs of dark modules on a row are merged into one rectangle.
+ */
+function drawQr(doc: jsPDF, text: string, x: number, y: number, size: number) {
+  const qr = QRCode.create(text, { errorCorrectionLevel: 'M' });
+  const n = qr.modules.size;
+  const m = size / n;
+  doc.setFillColor(...INK);
+  for (let r = 0; r < n; r++) {
+    let c = 0;
+    while (c < n) {
+      if (!qr.modules.get(r, c)) { c++; continue; }
+      const start = c;
+      while (c < n && qr.modules.get(r, c)) c++;
+      // Each run reaches 0.08 mm into its neighbours so viewers and printers show no white seams
+      // between rows (well under a tenth of a module, so scanning is unaffected).
+      doc.rect(x + start * m, y + r * m, (c - start) * m + 0.08, m + 0.08, 'F');
+    }
+  }
+}
+
+/**
  * A4 sheet of 21 labels (3 x 7, 63.5 x 38.1 mm: the common "L7160" sticker size).
  * Cut lines are drawn so plain paper works too.
  */
 export async function downloadQrLabels(assets: Asset[], building: Building, fileName?: string) {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  await new Promise((r) => setTimeout(r, 30)); // let the button show "Preparing…" first
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
   const LW = 63.5, LH = 38.1, GAP = 2.5;
   const left = (210 - (LW * 3 + GAP * 2)) / 2;
   const top = (297 - LH * 7) / 2;
@@ -57,7 +81,7 @@ export async function downloadQrLabels(assets: Asset[], building: Building, file
 
     doc.setDrawColor(...EDGE); doc.setLineWidth(0.15);
     doc.roundedRect(x, y, LW, LH, 2.5, 2.5, 'S');
-    doc.addImage(await qrDataUrl(unitUrl(a.id), 280), 'PNG', x + 3, y + 4.5, 29, 29);
+    drawQr(doc, unitUrl(a.id), x + 3, y + 4.5, 29);
 
     const tx = x + 35;
     doc.setFillColor(...TEAL); doc.roundedRect(tx, y + 4.5, 25.5, 4.6, 1, 1, 'F');
