@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { Camera, Eraser, ImagePlus, Plus, Trash2, UserPlus, X } from 'lucide-react';
+import { Camera, Check, ChevronRight, Eraser, ImagePlus, Plus, Trash2, UserPlus, X } from 'lucide-react';
 import type { TeamMember } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { getSession } from '../lib/api.ts';
 import { compressImage } from '../lib/image.ts';
 import { removeTeamMember, saveTeamMember } from '../lib/store.ts';
 import { useTeam } from '../lib/hooks.ts';
+import { useSync } from '../lib/sync.ts';
 import { Button, cx, Field, Sheet, useToast } from './ui.tsx';
 import { useDialogs } from './Dialogs.tsx';
 
@@ -24,11 +25,11 @@ export function PersonPicker({ value, onChange, disabled, error }: { value: stri
           <option value="">Select inspector…</option>
           {team.map((m) => <option key={m.id} value={m.name}>{m.name} — {m.designation}</option>)}
           {value && !known && <option value={value}>{value}</option>}
-          {!disabled && <option value="__manage">＋ Add or remove people…</option>}
+          {!disabled && <option value="__manage">＋ Someone else…</option>}
         </select>
-        {!disabled && <Button type="button" variant="secondary" className="shrink-0 px-3" title="Add or remove inspectors" onClick={() => setOpen(true)}><UserPlus className="h-4 w-4" /></Button>}
+        {!disabled && <Button type="button" variant="secondary" className="shrink-0 px-3" title="Choose or add a person" onClick={() => setOpen(true)}><UserPlus className="h-4 w-4" /></Button>}
       </div>
-      <TeamSheet open={open} onClose={() => setOpen(false)} onPick={(n) => { onChange(n); setOpen(false); }} />
+      <PickPersonSheet open={open} onClose={() => setOpen(false)} current={value} onPick={(n) => { onChange(n); setOpen(false); }} />
     </>
   );
 }
@@ -63,7 +64,7 @@ export function TeamSheet({ open, onClose, onPick, title = 'Inspection team' }: 
         </div>
         <ul className="divide-y divide-slate-100">
           {team.map((m) => (
-            <li key={m.id} className="flex items-center gap-3 py-2.5">
+            <li key={m.id} className="-mx-2 flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-black/[.035]">
               <div className="grid h-9 w-9 place-items-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">{m.name.split(' ').map((p) => p[0]).join('').slice(0, 2)}</div>
               <button className="flex-1 text-left" onClick={() => onPick?.(m.name)} disabled={!onPick}>
                 <div className="font-medium">{m.name}</div><div className="text-xs text-slate-500">{m.designation}</div>
@@ -73,6 +74,74 @@ export function TeamSheet({ open, onClose, onPick, title = 'Inspection team' }: 
           ))}
         </ul>
       </div>
+    </Sheet>
+  );
+}
+
+const initialsOf = (n: string) => n.split(/\s+/).filter(Boolean).map((p) => p[0]).slice(0, 2).join('').toUpperCase();
+
+/**
+ * "Who is using this device?" / "Who did this inspection?": a list of people to tap.
+ * Nothing here deletes anyone (that lives on the Team page), and it waits for the team to download.
+ */
+export function PickPersonSheet({ open, onClose, onPick, current, title = 'Who are you?' }: {
+  open: boolean; onClose: () => void; onPick: (name: string) => void; current?: string; title?: string;
+}) {
+  const team = useTeam();
+  const sync = useSync();
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const loading = team.length === 0 && !sync.lastSyncAt;
+  const add = async () => {
+    const n = name.trim();
+    if (!n) return;
+    const existing = team.find((m) => m.name.toLowerCase() === n.toLowerCase());
+    if (existing) { onPick(existing.name); return; }
+    const m = await saveTeamMember({ name: n, designation: 'Inspector' });
+    toast(`${m.name} added to the team`);
+    setName(''); setAdding(false);
+    onPick(m.name);
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title={title}>
+      <p className="-mt-1 mb-4 text-[15px] text-slate-500">Your name goes on the inspections and certificates you sign.</p>
+      {loading ? (
+        <div className="space-y-2" aria-busy="true" aria-label="Loading the team">
+          {[0, 1, 2].map((i) => <div key={i} className="flex animate-pulse items-center gap-3 rounded-2xl bg-slate-50 p-3"><div className="h-11 w-11 rounded-full bg-slate-200" /><div className="h-4 w-40 rounded bg-slate-200" /></div>)}
+          <div className="pt-1 text-center text-[14px] text-slate-500">Loading your team…</div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {team.map((m) => {
+            const me = m.name === current;
+            return (
+              <button key={m.id} type="button" onClick={() => onPick(m.name)} data-person={m.name}
+                className={cx('group flex w-full items-center gap-3 rounded-2xl p-3 text-left ring-1 ring-inset transition duration-150 active:scale-[.98]',
+                  me ? 'bg-brand-500/[.09] ring-brand-500/40' : 'bg-white ring-black/[.08] hover:bg-brand-500/[.05] hover:ring-brand-500/30')}>
+                <span className={cx('grid h-11 w-11 shrink-0 place-items-center rounded-full text-[15px] font-semibold transition-colors',
+                  me ? 'bg-brand-600 text-white' : 'bg-brand-500/[.12] text-brand-700 group-hover:bg-brand-600 group-hover:text-white')}>{initialsOf(m.name)}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[17px] font-semibold tracking-[-0.01em]">{m.name}</span>
+                  <span className="block text-[14px] text-slate-500">{m.designation}</span>
+                </span>
+                {me ? <Check className="h-5 w-5 text-brand-600" /> : <ChevronRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-600" />}
+              </button>
+            );
+          })}
+          {team.length === 0 && <div className="rounded-2xl bg-slate-50 p-4 text-center text-[15px] text-slate-500">No one is on the team yet. Add yourself below.</div>}
+        </div>
+      )}
+      {!loading && (adding || team.length === 0 ? (
+        <form className="mt-4 flex gap-2" onSubmit={(e) => { e.preventDefault(); void add(); }}>
+          <input id="new-person" className="input flex-1" placeholder="Your full name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+          <Button type="submit" variant="primary" disabled={!name.trim()}>Add</Button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-semibold text-brand-700 transition hover:bg-brand-500/[.06]">
+          <Plus className="h-4 w-4" />Not on the list? Add yourself
+        </button>
+      ))}
     </Sheet>
   );
 }

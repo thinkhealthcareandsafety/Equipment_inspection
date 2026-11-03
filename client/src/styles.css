@@ -113,6 +113,16 @@
 .animate-scrim { animation: scrim 0.3s ease-out both; }
 @keyframes pop { from { opacity: 0; transform: translateY(-10px) scale(0.96); } to { opacity: 1; transform: none; } }
 .animate-pop { animation: pop 0.4s var(--ease-spring) both; }
+/* Access code boxes */
+@keyframes shake { 0%, 100% { transform: none; } 20%, 60% { transform: translateX(-7px); } 40%, 80% { transform: translateX(7px); } }
+.animate-shake { animation: shake 0.4s ease-in-out; }
+.pin-empty { box-shadow: inset 0 0 0 1px rgb(60 60 67 / 0.16); }
+.pin-filled { box-shadow: inset 0 0 0 1.5px rgb(60 60 67 / 0.34); }
+.pin-error { box-shadow: inset 0 0 0 1.5px var(--color-rose-500); }
+.pin-empty:focus, .pin-filled:focus, .pin-error:focus {
+  box-shadow: inset 0 0 0 2px var(--color-brand-500), 0 0 0 4px color-mix(in srgb, var(--color-brand-500) 18%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { .animate-shake { animation: none; } }
 /* On wide screens a sheet is a centred dialog: it fades up instead of sliding from the bottom edge */
 @keyframes dialog { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: none; } }
 @media (min-width: 640px) { .animate-sheet { animation: dialog 0.35s var(--ease-spring) both; } }

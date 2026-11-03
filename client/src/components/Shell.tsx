@@ -8,7 +8,7 @@ import { ScanSheet } from './ScanSheet.tsx';
 import { formatDateTime } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
-import { TeamSheet } from './Inputs.tsx';
+import { PickPersonSheet } from './Inputs.tsx';
 import { can, useUser } from '../lib/hooks.ts';
 import { discardFailed, retryFailed, syncNow, useSync } from '../lib/sync.ts';
 import { Badge, Button, cx, Sheet } from './ui.tsx';
@@ -171,7 +171,8 @@ export function Shell() {
         <button onClick={signOut} className="row-press mt-4 flex w-full items-center justify-center gap-2 rounded-[14px] bg-black/[.05] py-3.5 text-[17px] font-semibold text-rose-600"><LogOut className="h-5 w-5" />Lock the app</button>
       </Sheet>
 
-      <TeamSheet open={whoOpen || (unnamed && !whoSkipped)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }} onPick={chooseName} title="Who is using this device?" />
+      <PickPersonSheet open={whoOpen || (unnamed && !whoSkipped && !!sync.lastSyncAt)} onClose={() => { setWhoOpen(false); setWhoSkipped(true); }}
+        onPick={chooseName} current={unnamed ? undefined : user.name} title="Who is using this device?" />
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />
       <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
