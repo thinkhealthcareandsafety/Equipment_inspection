@@ -25,7 +25,7 @@ export function AssetPage() {
     const [building, floor, location, inspections, floors, locations] = await Promise.all([
       db.buildings.get(asset.buildingId), asset.floorId ? db.floors.get(asset.floorId) : undefined,
       asset.locationId ? db.locations.get(asset.locationId) : undefined,
-      db.inspections.where('assetId').equals(assetId).toArray(),
+      db.inspections.where('assetId').equals(assetId).filter((i) => i.status !== 'discarded').toArray(),
       db.floors.where('buildingId').equals(asset.buildingId).toArray(), db.locations.where('buildingId').equals(asset.buildingId).toArray(),
     ]);
     return { asset, building, floor, location, floors, locations, inspections: inspections.sort((a, b) => b.header.inspectionDate.localeCompare(a.header.inspectionDate) || b.createdAt.localeCompare(a.createdAt)) };

@@ -77,7 +77,8 @@ export const INSPECTION_STATUS: Record<InspectionStatus, { label: string; tone: 
   draft: { label: 'Draft', tone: 'slate' },
   submitted: { label: 'Awaiting review', tone: 'blue' },
   returned: { label: 'Returned', tone: 'amber' },
-  finalized: { label: 'Finalised', tone: 'green' },
+  finalized: { label: 'Final', tone: 'green' },
+  discarded: { label: 'Discarded', tone: 'slate' },
 };
 export function InspectionStatusBadge({ status }: { status: InspectionStatus }) {
   const s = INSPECTION_STATUS[status];

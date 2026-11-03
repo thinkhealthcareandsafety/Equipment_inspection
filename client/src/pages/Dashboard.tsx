@@ -8,7 +8,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Building2, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
-import { dueState, EQUIPMENT_LABELS, formatDate, todayISO } from '@think/shared';
+import { dueState, EQUIPMENT_LABELS, formatDate, isMine, isOpen, todayISO } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, EMPTY_FILTERS, periodLabel } from '../lib/reports.ts';
 import { Button, Card, cx, Empty, InspectionStatusBadge } from '../components/ui.tsx';
@@ -29,13 +29,13 @@ export function Dashboard() {
   const done = k.inDate;
   const outList = data.assets.filter((a) => a.status === 'out_of_service');
   const overdue = data.assets.filter((a) => a.status !== 'out_of_service' && dueState(a.nextDueDate) === 'overdue').length;
-  const mine = data.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id)
+  const mine = data.inspections.filter((i) => isOpen(i) && isMine(i, user))
     .sort((a, b) => Number(b.status === 'returned') - Number(a.status === 'returned') || b.updatedAt.localeCompare(a.updatedAt));
   const reviewQueue = can.review(user.role) ? data.inspections.filter((i) => i.status === 'submitted') : [];
 
   // Today's work by person
   const today = todayISO();
-  const people = [...data.inspections.filter((i) => i.status !== 'draft' && i.header.inspectionDate === today).reduce((m, i) => {
+  const people = [...data.inspections.filter((i) => (i.status === 'submitted' || i.status === 'finalized') && i.header.inspectionDate === today).reduce((m, i) => {
     const name = i.header.technician || 'Unknown';
     const r = m.get(name) ?? { name, count: 0, fails: 0 };
     r.count++; if (i.result.defectsIdentified) r.fails++;

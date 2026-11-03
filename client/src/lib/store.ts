@@ -181,6 +181,17 @@ export async function removeTeamMember(m: TeamMember) {
 }
 
 /** Opens the user's open draft for this asset, or starts one (a re-test when the asset is failed). */
+/** Throws away an unfinished inspection on every device (kept on the server as 'discarded'). */
+export async function discardInspection(insp: Inspection, user: User) {
+  if (insp.status !== 'draft' && insp.status !== 'returned') throw new Error('Only unfinished inspections can be discarded.');
+  const doc: Inspection = {
+    ...insp, status: 'discarded', updatedAt: new Date().toISOString(),
+    events: [...insp.events, { at: new Date().toISOString(), by: user.id, byName: user.name, action: 'discard', to: 'discarded', offline: !navigator.onLine }],
+  };
+  await db.inspections.put(doc);
+  await enqueue({ type: 'inspection.upsert', entityId: doc.id, payload: { inspection: doc, baseRev: insp.rev || null } }, true);
+}
+
 export async function openOrCreateInspection(asset: Asset, user: User): Promise<string> {
   const draft = await db.inspections.where('assetId').equals(asset.id)
     .filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id).first();

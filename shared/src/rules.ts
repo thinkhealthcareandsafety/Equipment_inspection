@@ -224,8 +224,19 @@ export function assetAfterInspection(t: ChecklistTemplate, asset: Asset, insp: I
  */
 export const REVIEW_REQUIRED = false;
 
+/**
+ * Everyone shares one account, so "mine" means the inspection carries my name as technician.
+ * (Drafts from before a name was set fall back to the account.)
+ */
+export function isMine(insp: Inspection, user: { id: string; name: string }): boolean {
+  const t = insp.header.technician?.trim();
+  return t ? t === user.name : insp.createdBy === user.id;
+}
+
+export const isOpen = (insp: Inspection) => insp.status === 'draft' || insp.status === 'returned';
+
 export function canEdit(insp: Inspection, role: string, userId: string): boolean {
-  if (insp.status === 'finalized') return false;
+  if (insp.status === 'finalized' || insp.status === 'discarded') return false;
   if (insp.status === 'submitted') return false;
   if (role === 'client_admin') return false;
   if (role === 'inspector') return insp.createdBy === userId;

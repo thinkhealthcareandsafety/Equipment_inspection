@@ -21,9 +21,10 @@ export async function loadTemplate(q: Queryable, id: EquipmentType, version: num
 const SIGN = REVIEW_REQUIRED ? ['submitted'] : ['submitted', 'finalized'];
 const ALLOWED: Record<string, Record<string, string[]>> = {
   // role → from-status → allowed to-statuses
-  inspector: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN] },
-  reviewer: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN], submitted: ['finalized', 'returned'] },
-  admin: { new: ['draft', ...SIGN], draft: ['draft', ...SIGN], returned: ['draft', 'returned', ...SIGN], submitted: ['finalized', 'returned'] },
+  // Unfinished work can be discarded (soft delete); signed inspections cannot.
+  inspector: { new: ['draft', ...SIGN], draft: ['draft', 'discarded', ...SIGN], returned: ['draft', 'returned', 'discarded', ...SIGN] },
+  reviewer: { new: ['draft', ...SIGN], draft: ['draft', 'discarded', ...SIGN], returned: ['draft', 'returned', 'discarded', ...SIGN], submitted: ['finalized', 'returned'] },
+  admin: { new: ['draft', ...SIGN], draft: ['draft', 'discarded', ...SIGN], returned: ['draft', 'returned', 'discarded', ...SIGN], submitted: ['finalized', 'returned'] },
 };
 
 /**

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  ArrowRight, Check, ChevronLeft, CloudOff, Download, Ellipsis, Eye, History, Lock, PenLine, ShieldAlert, Undo2, X,
+  ArrowRight, Check, ChevronLeft, CloudOff, Download, Ellipsis, Eye, History, Lock, PenLine, ShieldAlert, Trash2, Undo2, X,
 } from 'lucide-react';
 import {
   addDays, blocking, canEdit, DEFAULT_TEMPLATES, deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, FUNCTIONAL_TEST_LABELS,
@@ -17,7 +17,8 @@ import {
 } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
-import { addPhoto, nextDueOnFloor, openOrCreateInspection, reviewInspection, saveInspection, submitInspection, templateFor, updateAsset } from '../lib/store.ts';
+import { addPhoto, discardInspection, nextDueOnFloor, openOrCreateInspection, reviewInspection, saveInspection, submitInspection, templateFor, updateAsset } from '../lib/store.ts';
+import { useDialogs } from '../components/Dialogs.tsx';
 import { useSync } from '../lib/sync.ts';
 import { downloadInspectionPack } from '../lib/exportPack.ts';
 import { describeEvent } from '../lib/pdf.ts';
@@ -55,6 +56,7 @@ export function InspectionPage() {
   }, [stored?.templateId, stored?.templateVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   if (stored === undefined || (stored && !template)) return <div className="h-96 animate-pulse rounded-2xl bg-slate-200/60" />;
   if (!stored) return <Empty title="Inspection not found on this device">It may still be syncing.</Empty>;
+  if (stored.status === 'discarded') return <Empty title="This inspection was discarded">It was unfinished and someone threw it away. Start a new inspection from the unit.</Empty>;
   return <Editor key={stored.id} initial={stored} template={template!} />;
 }
 
@@ -160,6 +162,16 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
     }
   }, [needsCar]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const dialogs = useDialogs();
+  const discard = async () => {
+    const ok = await dialogs.confirm(`The answers and photos in this unfinished inspection of ${h.equipmentAssetId} will be deleted. This cannot be undone.`,
+      { title: 'Discard this inspection?', confirmLabel: 'Discard', danger: true });
+    if (!ok) return;
+    pending.current = null; window.clearTimeout(timer.current); // do not save over the discard
+    try { await discardInspection(insp, user); toast(`${h.equipmentAssetId} discarded`); nav(`/assets/${insp.assetId}`, { replace: true }); }
+    catch (e) { toast((e as Error).message, 'err'); }
+  };
+
   const startNext = async (a: Asset) => { setDone(null); nav(`/inspections/${await openOrCreateInspection(a, user)}`, { replace: true }); };
 
   // Required header fields that are empty are shown even when details are folded.
@@ -189,6 +201,7 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
                 <MenuItem icon={<Eye className="h-4 w-4" />} onClick={() => setPaper(!paper)}>{paper ? 'Back to form' : 'View as paper form'}</MenuItem>
                 <MenuItem icon={<History className="h-4 w-4" />} onClick={() => setHistoryOpen(true)}>Change history</MenuItem>
                 {insp.status !== 'draft' && insp.status !== 'returned' && <MenuItem icon={<Download className="h-4 w-4" />} onClick={() => downloadInspectionPack(insp.id).catch((e) => toast(e.message, 'err'))}>Certificate PDF</MenuItem>}
+                {editable && (insp.status === 'draft' || insp.status === 'returned') && <MenuItem icon={<Trash2 className="h-4 w-4 text-rose-600" />} onClick={discard}><span className="text-rose-600">Discard this inspection</span></MenuItem>}
               </div>
             )}
           </div>

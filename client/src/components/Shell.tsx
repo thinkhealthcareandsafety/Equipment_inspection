@@ -5,7 +5,7 @@ import {
   Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Settings, Users,
 } from 'lucide-react';
 import { ScanSheet } from './ScanSheet.tsx';
-import { formatDateTime } from '@think/shared';
+import { formatDateTime, isMine } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
 import { PickPersonSheet } from './Inputs.tsx';
@@ -29,7 +29,7 @@ export function Shell() {
   const [whoOpen, setWhoOpen] = useState(false);
   const unnamed = user.name === 'Team';
   const reviewCount = useLiveQuery(() => db.inspections.where('status').equals('submitted').count(), []) ?? 0;
-  const myDrafts = useLiveQuery(() => db.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && i.createdBy === user.id).count(), [user.id]) ?? 0;
+  const myDrafts = useLiveQuery(() => db.inspections.filter((i) => (i.status === 'draft' || i.status === 'returned') && isMine(i, user)).count(), [user.id, user.name]) ?? 0;
   const unread = useLiveQuery(() => db.notifications.filter((n) => !n.read).count(), []) ?? 0;
 
   // Keep the menu to what people use daily; everything else is one tap away from Home or Reports.

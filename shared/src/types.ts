@@ -171,7 +171,8 @@ export interface InspectionHeader {
   inspectionPerformedBy: string;
 }
 
-export type InspectionStatus = 'draft' | 'submitted' | 'returned' | 'finalized';
+/** 'discarded': an unfinished inspection someone threw away. Kept on the server (soft delete) so every device hides it. */
+export type InspectionStatus = 'draft' | 'submitted' | 'returned' | 'finalized' | 'discarded';
 
 export interface InspectionEvent {
   at: string;
