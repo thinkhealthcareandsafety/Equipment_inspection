@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router';
 import { CameraOff } from 'lucide-react';
 import { db } from '../lib/db.ts';
 import { makeDetector, parseScan } from '../lib/qr.ts';
+import { buildIndex, search } from '../lib/search.ts';
 import { Button, haptic, Sheet } from './ui.tsx';
 
 export function ScanSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -25,6 +26,13 @@ function Scanner({ onClose }: { onClose: () => void }) {
     const hit = parseScan(text);
     let id = hit.assetId && (await db.assets.get(hit.assetId))?.id;
     if (!id && hit.tag) id = (await db.assets.filter((a) => a.assetTag.toUpperCase() === hit.tag).first())?.id;
+    if (!id && !hit.assetId && text.trim().length >= 2) {
+      // Typed rather than scanned: use the same forgiving search as Home and open the best match.
+      const [buildings, assets, floors, locations] = await Promise.all([db.buildings.toArray(), db.assets.toArray(), db.floors.toArray(), db.locations.toArray()]);
+      const r = search(buildIndex({ buildings, assets, floors, locations }), text, { sites: 0, units: 2 });
+      if (r.units[0] && (r.totalUnits === 1 || r.units[0].score >= r.units[1].score + 3)) id = r.units[0].item.id;
+      else if (r.totalUnits > 1) { setMsg(`${r.totalUnits} units match "${text.trim()}". Add the number from the label, e.g. NKP WC 4.`); return false; }
+    }
     if (!id) {
       setMsg(hit.assetId || hit.tag ? 'That unit is not in Think Inspect on this device yet. Sync, then try again.' : 'That code is not a Think Inspect label.');
       return false;
@@ -100,7 +108,7 @@ function Scanner({ onClose }: { onClose: () => void }) {
           if (tag.trim()) await openTarget(tag.trim());
         }}
       >
-        <input id="scan-tag" className="input flex-1 font-mono uppercase" placeholder="Or type the tag, e.g. JLL-NKP-WC-004" value={tag} onChange={(e) => setTag(e.target.value)} autoCapitalize="characters" />
+        <input id="scan-tag" className="input flex-1" placeholder="Or type the tag, e.g. NKP WC 4" value={tag} onChange={(e) => setTag(e.target.value)} autoCapitalize="characters" />
         <Button type="submit" variant="primary" disabled={!tag.trim()}>Open</Button>
       </form>
       <button type="button" onClick={() => { onClose(); nav('/sites'); }} className="w-full rounded-[14px] bg-black/[.05] py-3 text-[16px] font-semibold text-brand-700 transition hover:bg-black/[.08] active:scale-[.98]">

@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { ClipboardCheck, Database, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, type Asset, type Building } from '@think/shared';
 import { downloadQrLabels, qrDataUrl, unitUrl } from '../lib/qr.ts';
+import { rememberUnit } from '../lib/search.ts';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
 import { createInspection, updateAsset } from '../lib/store.ts';
@@ -17,6 +18,7 @@ export function AssetPage() {
   const nav = useNavigate();
   const toast = useToast();
   const [edit, setEdit] = useState(false);
+  useEffect(() => { if (assetId) rememberUnit(assetId); }, [assetId]);
   const data = useLiveQuery(async () => {
     const asset = await db.assets.get(assetId);
     if (!asset) return { asset: undefined };

@@ -222,7 +222,7 @@ export function SearchField({ value, onChange, placeholder, id, className }: { v
   return (
     <div className={cx('relative', className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-500" />
-      <input id={id} type="search" enterKeyHint="search" autoComplete="off" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+      <input id={id} type="search" enterKeyHint="search" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
         className="h-11 w-full rounded-[12px] bg-black/[.06] pl-10 pr-10 text-[17px] text-slate-900 transition placeholder:text-slate-500 focus:bg-black/[.08] focus:outline-none [&::-webkit-search-cancel-button]:hidden" />
       {value && <button type="button" onClick={() => onChange('')} aria-label="Clear search" className="absolute right-2.5 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center rounded-full bg-slate-400 text-white active:scale-90"><X className="h-3 w-3" strokeWidth={3} /></button>}
     </div>

@@ -5,19 +5,19 @@
  *  3. What needs me?       approvals, unfinished inspections, units that must not be used
  * Then the round by city, today's work and the sites with the most left to do.
  */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Building2, ChevronRight, ClipboardCheck, LifeBuoy, MapPin, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
+import { Building2, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
 import { dueState, EQUIPMENT_LABELS, formatDate, todayISO } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, EMPTY_FILTERS, periodLabel } from '../lib/reports.ts';
-import { Button, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge, SearchField } from '../components/ui.tsx';
+import { Button, Card, cx, Empty, InspectionStatusBadge } from '../components/ui.tsx';
+import { GlobalSearch } from '../components/GlobalSearch.tsx';
 
 export function Dashboard() {
   const user = useUser();
   const data = useAllData();
   const nav = useNavigate();
-  const [q, setQ] = useState('');
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
   const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
@@ -48,13 +48,6 @@ export function Dashboard() {
     return { b, todo: list.filter((a) => dueState(a.nextDueDate) !== 'ok').length, oos: list.filter((a) => a.status === 'out_of_service').length, total: list.length };
   }).filter((s) => s.todo || s.oos).sort((a, b) => b.oos - a.oos || b.todo - a.todo).slice(0, 5);
 
-  const term = q.trim().toLowerCase();
-  const results = term.length < 2 ? [] : [
-    ...data.buildings.filter((b) => `${b.name} ${b.city}`.toLowerCase().includes(term)).slice(0, 4).map((b) => ({ key: b.id, to: `/sites/${b.id}`, title: b.name, sub: `Site · ${b.city}`, type: null })),
-    ...data.assets.filter((a) => `${a.assetTag} ${a.serialNumber ?? ''} ${a.manufacturer ?? ''}`.toLowerCase().includes(term)).slice(0, 6)
-      .map((a) => ({ key: a.id, to: `/assets/${a.id}`, title: a.assetTag, sub: `${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}`, type: a.equipmentType })),
-  ];
-
   const pct = total ? Math.round((done / total) * 100) : 0;
   const quarter = periodLabel('quarter');
   const attention = reviewQueue.length + mine.length + outList.length + (overdue ? 1 : 0);
@@ -76,24 +69,7 @@ export function Dashboard() {
         <Button size="lg" variant="primary" className="whitespace-nowrap !px-3 sm:!px-6" icon={<Building2 className="h-5 w-5 shrink-0" />} onClick={() => nav('/sites')}>Pick a site</Button>
         <Button size="lg" className="whitespace-nowrap !px-3 sm:!px-6" icon={<ScanLine className="h-5 w-5 shrink-0" />} onClick={() => window.dispatchEvent(new Event('think:scan'))}>Scan label</Button>
       </div>
-      <div className="mt-3">
-        <div className="relative">
-          <SearchField id="home-search" value={q} onChange={setQ} placeholder="Find a unit or site" className="h-[52px]" />
-          {results.length > 0 && (
-            <Card className="animate-pop absolute inset-x-0 top-full z-20 mt-2 overflow-hidden shadow-lift">
-              <div className="divide-y">
-                {results.map((r) => (
-                  <Link key={r.key} to={r.to} className="row-press flex items-center gap-3 px-4 py-2.5">
-                    {r.type ? <EquipmentAvatar type={r.type} /> : <div className="grid h-10 w-10 place-items-center rounded-[10px] bg-slate-500 text-white"><MapPin className="h-[22px] w-[22px]" /></div>}
-                    <div><div className="text-[17px] font-medium">{r.title}</div><div className="text-[14px] text-slate-500">{r.sub}</div></div>
-                  </Link>
-                ))}
-              </div>
-            </Card>
-          )}
-          {term.length >= 2 && results.length === 0 && <div className="mt-2 px-1 text-[15px] text-slate-500">Nothing matches “{q}”.</div>}
-        </div>
-      </div>
+      <div className="mt-3"><GlobalSearch data={data} /></div>
       <Link to="/help" className="mt-3 inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
 
       {/* 3. What needs me */}
