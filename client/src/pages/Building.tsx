@@ -7,9 +7,9 @@ import {
   dayLabel, daysLeftIn, EQUIPMENT_LABELS, formatDate, missingDetails, needsInspection, quarterLabel, quarterLock, quarterName, quarterOf, type Asset, type EquipmentType,
 } from '@think/shared';
 import { db } from '../lib/db.ts';
-import { can, useUser } from '../lib/hooks.ts';
+import { can, useDismissed, useUser } from '../lib/hooks.ts';
 import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from '../lib/store.ts';
-import { AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, Empty, EquipmentAvatar, Field, PageHeader, QuarterBadge, SearchField, Sheet, useToast } from '../components/ui.tsx';
+import { AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, DismissButton, Empty, EquipmentAvatar, Field, PageHeader, QuarterBadge, SearchField, Sheet, useToast } from '../components/ui.tsx';
 import { Select } from '../components/Pickers.tsx';
 import { ContactLine, ContactsSheet, DateTile, nextVisit, ScheduleSheet } from '../components/Plan.tsx';
 import { Skeleton } from './Dashboard.tsx';
@@ -39,6 +39,8 @@ export function BuildingPage() {
   const [printing, setPrinting] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [contacts, setContacts] = useState<{ startNew: boolean } | null>(null);
+  const [floorsTipHidden, hideFloorsTip] = useDismissed('floors-tip');
+  const [unassignedHidden, hideUnassigned] = useDismissed('unassigned-note');
 
   const data = useLiveQuery(async () => {
     const [building, floors, locations, assets, visits] = await Promise.all([
@@ -160,11 +162,14 @@ export function BuildingPage() {
         {unassigned > 0 && <Chip active={floorSel === UNASSIGNED} onClick={() => setFloor(UNASSIGNED)} count={unassigned}>Unassigned</Chip>}
       </div>
 
-      {staff && floors.length === 0 && (
-        <button onClick={() => setFloorsOpen(true)} className="mb-4 flex w-full items-center gap-3 rounded-2xl border border-dashed border-brand-300 bg-brand-50/60 p-4 text-left transition hover:bg-brand-50">
-          <Layers className="h-5 w-5 shrink-0 text-brand-600" />
-          <span className="text-sm"><b className="text-slate-900">Add this site's floors</b><span className="block text-slate-600">One tap adds Ground to the top floor, so reports can show floor by floor.</span></span>
-        </button>
+      {staff && floors.length === 0 && !floorsTipHidden && (
+        <div data-floors-tip className="mb-4 flex items-center gap-1 rounded-2xl border border-dashed border-brand-300 bg-brand-50/60 pr-2 transition hover:bg-brand-50">
+          <button type="button" onClick={() => setFloorsOpen(true)} className="flex min-w-0 flex-1 items-center gap-3 p-4 text-left">
+            <Layers className="h-5 w-5 shrink-0 text-brand-600" />
+            <span className="text-sm"><b className="text-slate-900">Add this site's floors</b><span className="block text-slate-600">One tap adds Ground to the top floor, so reports can show floor by floor.</span></span>
+          </button>
+          <DismissButton onClick={hideFloorsTip} label="Hide this tip (Add floors stays above)" />
+        </div>
       )}
       {can.inspect(user.role) && visible.some(todo) && !selecting && (
         <Button variant="primary" size="lg" className="mb-4 w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />}
@@ -188,9 +193,10 @@ export function BuildingPage() {
           </>}
         </Card>
       )}
-      {floorSel === UNASSIGNED && (
-        <div className="mb-4 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          No floor recorded yet. Use <b>Select</b> to move units to their floor.
+      {floorSel === UNASSIGNED && !unassignedHidden && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-amber-50 py-1 pl-3 pr-1 text-sm text-amber-900">
+          <span className="flex-1">No floor recorded yet. Use <b>Select</b> to move units to their floor.</span>
+          <DismissButton onClick={hideUnassigned} label="Hide this note" className="text-amber-700/70 hover:text-amber-900" />
         </div>
       )}
 

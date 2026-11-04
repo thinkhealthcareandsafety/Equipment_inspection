@@ -12,9 +12,9 @@ import {
   addDays, dayLabel, daysLeftIn, diffDays, EQUIPMENT_LABELS, formatDate, fyLabel, inQuarter, isMine, isOpen, missingDetails, pastQuarters, quarterElapsed,
   quarterLabel, quarterLength, quarterName, quarterOf, shiftQuarter, todayISO, weekday, type Quarter,
 } from '@think/shared';
-import { can, useAllData, useUser } from '../lib/hooks.ts';
+import { can, useAllData, useDismissed, useUser } from '../lib/hooks.ts';
 import { buildReport, closingSoon, EMPTY_FILTERS } from '../lib/reports.ts';
-import { Button, Card, cx, Empty, InspectionStatusBadge, Segmented } from '../components/ui.tsx';
+import { Button, Card, cx, DismissButton, Empty, InspectionStatusBadge, Segmented } from '../components/ui.tsx';
 import { GlobalSearch } from '../components/GlobalSearch.tsx';
 import { ContactActions, DateTile } from '../components/Plan.tsx';
 
@@ -26,6 +26,7 @@ export function Dashboard() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'past' ? 'past' : 'now';
+  const [helpHidden, hideHelp] = useDismissed('home-help-link');
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
   const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
@@ -56,7 +57,12 @@ export function Dashboard() {
           <div className="min-w-0 sm:flex-1 2xl:w-[420px] 2xl:flex-none"><GlobalSearch data={data} /></div>
         </div>
       </div>
-      <Link to="/help" className="mt-3 inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700 sm:hidden"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
+      {!helpHidden && (
+        <div className="mt-2 flex items-center gap-1 sm:hidden">
+          <Link to="/help" className="inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
+          <DismissButton onClick={hideHelp} label="Hide (How to use stays in More)" />
+        </div>
+      )}
 
       <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="w-full sm:w-[340px]">
@@ -119,7 +125,9 @@ function ThisQuarter({ data, report, byCity }: { data: AllData; report: Report; 
 
   const closing = closingSoon(report);
   const incomplete = report.assets.filter((a) => missingDetails(a).length > 0).length;
-  const attention = reviewQueue.length + mine.length + outList.length + (closing ? 1 : 0) + (incomplete ? 1 : 0);
+  const [missingHidden, hideMissing] = useDismissed(`home-missing-${incomplete}`); // comes back if the number changes
+  const showMissing = incomplete > 0 && !missingHidden;
+  const attention = reviewQueue.length + mine.length + outList.length + (closing ? 1 : 0) + (showMissing ? 1 : 0);
   const pct = total ? Math.round(share * 100) : 0;
 
   const withDefects = report.assets.filter((a) => a.openDefects.length > 0).length;
@@ -215,7 +223,7 @@ function ThisQuarter({ data, report, byCity }: { data: AllData; report: Report; 
                       sub={`${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}, ${bById.get(a.buildingId)?.city} · ${a.statusReason ?? 'Out of service'}`} />
                   ))}
                   {outList.length > 4 && <Row to="/reports?view=oos" tone="red" icon={<ShieldAlert className="h-5 w-5" />} title={`${outList.length - 4} more out of service`} sub="See the full list" />}
-                  {incomplete > 0 && <Row to="/reports?view=missing" tone="amber" icon={<CircleAlert className="h-5 w-5" />}
+                  {showMissing && <Row to="/reports?view=missing" tone="amber" icon={<CircleAlert className="h-5 w-5" />} onDismiss={hideMissing}
                     title={`${incomplete} of ${total} units are missing details`} sub="Make, model, serial number, floor or purchase date. Fill them in on site." />}
                 </div>
               </Card>
@@ -399,17 +407,20 @@ function Caption({ children, right, className }: { children: ReactNode; right?: 
 
 const TONES = { red: 'bg-rose-500/[.12] text-rose-600', amber: 'bg-amber-500/[.16] text-amber-700', blue: 'bg-sky-500/[.14] text-sky-700', slate: 'bg-black/[.06] text-slate-600' } as const;
 
-function Row({ to, tone, icon, title, sub, right }: { to: string; tone: keyof typeof TONES; icon: ReactNode; title: string; sub: string; right?: ReactNode }) {
+function Row({ to, tone, icon, title, sub, right, onDismiss }: { to: string; tone: keyof typeof TONES; icon: ReactNode; title: string; sub: string; right?: ReactNode; onDismiss?: () => void }) {
   return (
-    <Link to={to} className="row-press flex items-center gap-3 px-4 py-3">
-      <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-[11px]', TONES[tone])}>{icon}</span>
-      <div className="min-w-0 flex-1">
-        <div className="line-clamp-2 text-[16px] font-semibold leading-snug tracking-[-0.01em]">{title}</div>
-        <div className="line-clamp-2 text-[14px] text-slate-500">{sub}</div>
-      </div>
-      {right}
-      <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
-    </Link>
+    <div className="flex items-center">
+      <Link to={to} className={cx('row-press flex min-w-0 flex-1 items-center gap-3 py-3 pl-4', onDismiss ? 'pr-1' : 'pr-4')}>
+        <span className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-[11px]', TONES[tone])}>{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-2 text-[16px] font-semibold leading-snug tracking-[-0.01em]">{title}</div>
+          <div className="line-clamp-2 text-[14px] text-slate-500">{sub}</div>
+        </div>
+        {right}
+        {!onDismiss && <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />}
+      </Link>
+      {onDismiss && <DismissButton onClick={onDismiss} label="Hide from Home (the list stays in Reports)" className="mr-2" />}
+    </div>
   );
 }
 

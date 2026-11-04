@@ -71,6 +71,14 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
   const [showErrors, setShowErrors] = useState(false);
   const [editDetails, setEditDetails] = useState(false);
   const [menu, setMenu] = useState(false);
+  const menuBox = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const down = (e: PointerEvent) => { if (!menuBox.current?.contains(e.target as Node)) setMenu(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenu(false); };
+    document.addEventListener('pointerdown', down); window.addEventListener('keydown', key);
+    return () => { document.removeEventListener('pointerdown', down); window.removeEventListener('keydown', key); };
+  }, [menu]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [floorsOpen, setFloorsOpen] = useState(false);
@@ -195,8 +203,8 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
               {editable && <span className="inline-flex items-center gap-1">· {!sync.online && <CloudOff className="h-3 w-3" />}{saved === 'saving' ? 'Saving…' : 'Saved'}</span>}
             </div>
           </div>
-          <div className="relative">
-            <button onClick={() => setMenu(!menu)} className="rounded-xl p-2 text-slate-500 hover:bg-white" aria-label="More"><Ellipsis className="h-5 w-5" /></button>
+          <div className="relative" ref={menuBox}>
+            <button onClick={() => setMenu(!menu)} className="rounded-xl p-2 text-slate-500 hover:bg-white" aria-label="More" aria-expanded={menu}><Ellipsis className="h-5 w-5" /></button>
             {menu && (
               <div className="absolute right-0 top-11 z-20 w-52 overflow-hidden rounded-2xl bg-white py-1 shadow-lift ring-1 ring-slate-200" onClick={() => setMenu(false)}>
                 <MenuItem icon={<Eye className="h-4 w-4" />} onClick={() => setPaper(!paper)}>{paper ? 'Back to form' : 'View as paper form'}</MenuItem>

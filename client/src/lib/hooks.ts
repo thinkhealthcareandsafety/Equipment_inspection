@@ -51,6 +51,16 @@ export function useServerInfo() {
   return info;
 }
 
+/** A tip someone closed stays closed on this device. */
+export function useDismissed(key: string): [boolean, () => void] {
+  const k = `think.hide.${key}`;
+  const read = () => { try { return localStorage.getItem(k) === '1'; } catch { return false; } };
+  const [state, setState] = useState(() => ({ k, hidden: read() }));
+  const hidden = state.k === k ? state.hidden : read();
+  const hide = () => { try { localStorage.setItem(k, '1'); } catch { /* private mode: hide for now */ } setState({ k, hidden: true }); };
+  return [hidden, hide];
+}
+
 export function useTeam(includeInactive = false) {
   return useLiveQuery(async () => {
     const all = await db.team.toArray();

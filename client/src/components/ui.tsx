@@ -243,6 +243,16 @@ export function Chip({ active, onClick, children, count }: { active?: boolean; o
   );
 }
 
+/** The small round × that closes a tip or a box. */
+export function DismissButton({ onClick, label = 'Close', className }: { onClick: () => void; label?: string; className?: string }) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={(e) => { e.preventDefault(); e.stopPropagation(); haptic(); onClick(); }}
+      className={cx('grid h-8 w-8 shrink-0 place-items-center rounded-full text-slate-400 transition hover:bg-black/[.07] hover:text-slate-700 active:scale-90', className)}>
+      <X className="h-4 w-4" strokeWidth={2.4} />
+    </button>
+  );
+}
+
 // ---- toasts ----
 type ToastT = { id: number; text: string; tone: 'ok' | 'err' | 'info' };
 const ToastCtx = createContext<(text: string, tone?: ToastT['tone']) => void>(() => {});
@@ -259,8 +269,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div className="pointer-events-none fixed inset-x-0 top-16 z-[60] flex flex-col items-center gap-2 px-4">
         {items.map((t) => (
-          <div key={t.id} role="status" className={cx('animate-pop pointer-events-auto max-w-md rounded-full px-5 py-3 text-[15px] font-medium shadow-lift backdrop-blur-xl',
-            t.tone === 'err' ? 'bg-rose-600/95 text-white' : t.tone === 'info' ? 'bg-white/90 text-slate-900' : 'bg-black/80 text-white')}>{t.text}</div>
+          <button key={t.id} type="button" role="status" title="Tap to close" onClick={() => setItems((x) => x.filter((y) => y.id !== t.id))}
+            className={cx('animate-pop pointer-events-auto flex max-w-md items-center gap-2.5 rounded-full py-3 pl-5 pr-3.5 text-left text-[15px] font-medium shadow-lift backdrop-blur-xl transition active:scale-[.98]',
+              t.tone === 'err' ? 'bg-rose-600/95 text-white' : t.tone === 'info' ? 'bg-white/90 text-slate-900' : 'bg-black/80 text-white')}>
+            <span className="min-w-0">{t.text}</span><X className="h-4 w-4 shrink-0 opacity-60" strokeWidth={2.4} />
+          </button>
         ))}
       </div>
     </ToastCtx.Provider>
