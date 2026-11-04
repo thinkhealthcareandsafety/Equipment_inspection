@@ -102,7 +102,7 @@ export function Dashboard() {
       )}
 
       {/* This quarter, by city */}
-      <Caption right={<Link to="/reports" className="text-[15px] font-medium text-brand-700">Full report</Link>}>{quarter}</Caption>
+      <Caption right={<Link to="/reports" className="text-[15px] font-medium text-brand-700">See report</Link>}>{quarter} · tap a city to see its sites</Caption>
       <Card className="overflow-hidden">
         <div className="px-4 pb-3 pt-4">
           <div className="flex items-baseline justify-between gap-3">
@@ -116,7 +116,7 @@ export function Dashboard() {
         </div>
         <div className="divide-y border-t">
           {(byCity ?? []).map((c) => (
-            <Link key={c.key} to={`/reports?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+            <Link key={c.key} to={`/sites?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
               <div className="truncate text-[16px] font-medium">{c.label}</div>
               <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} inspected, ${c.outOfService} out of service`}>
                 <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, c.inDate - c.outOfService) / Math.max(c.assets, 1)) * 100}%` }} />

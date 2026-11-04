@@ -74,7 +74,8 @@ export function Help() {
         <Card className="overflow-hidden">
           <ol className="divide-y divide-slate-100">
             <Step n={1} title="Open the unit">
-              <p>On Home tap <strong>Pick a site</strong>, choose the site, then tap the unit. Or type its tag (for example <span className="whitespace-nowrap">"NKP WC 004"</span>) in the search on Home.</p>
+              <p>On Home tap <strong>Pick a site</strong>, choose the site, then tap the unit. Lost somewhere else in the app? Tap the <strong>magnifier</strong> at the top (on a computer: <strong>Find</strong> in the menu, or Ctrl+K) and type the site or the tag, for example <span className="whitespace-nowrap">"NKP"</span> or <span className="whitespace-nowrap">"NKP WC 4"</span>.</p>
+              <p><strong>Reports</strong> is only for numbers and PDFs. To inspect, use <strong>Sites</strong>; if you are in Reports with a site chosen, tap <strong>Inspect at …</strong>.</p>
               <p>Once QR labels are stuck on the units (see <strong>QR labels</strong> below), point the phone camera at the label instead, or tap <ScanLine className="inline h-4 w-4 -translate-y-px" /> <strong>Scan</strong>.</p>
             </Step>
             <Step n={2} title="Tap Start inspection">

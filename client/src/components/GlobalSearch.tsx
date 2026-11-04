@@ -13,7 +13,9 @@ import { cx, EquipmentAvatar, SearchField } from './ui.tsx';
 type Data = { buildings: Building[]; assets: Asset[]; floors: Floor[]; locations: Location[] };
 type Row = { key: string; to: string; kind: 'site' | 'unit'; title: string; sub: string; asset?: Asset; building?: Building };
 
-export function GlobalSearch({ data, placeholder = 'Find a unit or site' }: { data: Data; placeholder?: string }) {
+export function GlobalSearch({ data, placeholder = 'Find a unit or site', id = 'home-search', autoFocus, onNavigate }: {
+  data: Data; placeholder?: string; id?: string; autoFocus?: boolean; onNavigate?: () => void;
+}) {
   const nav = useNavigate();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
@@ -58,8 +60,10 @@ export function GlobalSearch({ data, placeholder = 'Find a unit or site' }: { da
     if (r.kind === 'unit') rememberUnit(r.key);
     setOpen(false);
     setQ('');
+    onNavigate?.();
     nav(r.to);
   };
+  useEffect(() => { if (autoFocus) setTimeout(() => document.getElementById(id)?.focus(), 60); }, [autoFocus, id]);
 
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((i) => Math.min(i + 1, Math.max(flat.length - 1, 0))); }
@@ -73,7 +77,7 @@ export function GlobalSearch({ data, placeholder = 'Find a unit or site' }: { da
 
   return (
     <div ref={box} className="relative" onFocus={() => setOpen(true)} onKeyDown={onKey}>
-      <SearchField id="home-search" value={q} onChange={(v) => { setQ(v); setOpen(true); }} placeholder={placeholder} className="h-[52px]" />
+      <SearchField id={id} value={q} onChange={(v) => { setQ(v); setOpen(true); }} placeholder={placeholder} className="h-[52px]" />
       {showPanel && (
         <div role="listbox" aria-label="Search results" className="animate-pop absolute inset-x-0 top-full z-30 mt-2 max-h-[min(70dvh,560px)] overflow-y-auto rounded-[18px] bg-white shadow-lift ring-1 ring-black/[.06]">
           {groups.map((g) => (

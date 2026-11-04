@@ -4,7 +4,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Check, ChevronDown, ChevronRight, FileSpreadsheet, FileText, Layers, MapPin } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, FileText, Layers, MapPin } from 'lucide-react';
 import { EQUIPMENT_LABELS, formatDate, relativeDue, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
@@ -114,7 +114,12 @@ export function Reports() {
             {floorId && <><ChevronRight className="h-4 w-4 text-slate-300" /><span className="font-medium text-slate-700">{floorName(floorId)}</span></>}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {buildingId && (
+            <Link to={`/sites/${buildingId}`} className="w-full sm:w-auto">
+              <Button variant="primary" className="w-full" icon={<ClipboardCheck className="h-4 w-4" />}>Inspect at {bById.get(buildingId)?.name}<ArrowRight className="h-4 w-4" /></Button>
+            </Link>
+          )}
           <Button variant="dark" className="flex-1 sm:flex-none" icon={<FileText className="h-4 w-4" />} disabled={busy} onClick={exportPdf}>{busy ? 'Preparing…' : 'PDF report'}</Button>
           <Button className="flex-1 sm:flex-none" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={exportExcel}>Excel</Button>
         </div>
@@ -300,7 +305,7 @@ function PlaceSheet({ open, onClose, data, city, buildingId, onPick }: {
     </button>
   );
   return (
-    <Sheet open={open} onClose={onClose} title="Which sites?">
+    <Sheet open={open} onClose={onClose} title="Report for which sites?">
       <SearchField id="place-search" value={q} onChange={setQ} placeholder="Search a city or site" />
       <div className="mt-4 space-y-5">
         {!term && (

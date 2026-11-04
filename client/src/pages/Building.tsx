@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { ChevronRight, ClipboardCheck, Layers, MapPin, Pencil, Plus, Printer, Search, SquareCheck, Trash2, X } from 'lucide-react';
@@ -9,7 +9,7 @@ import { can, useUser } from '../lib/hooks.ts';
 import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from '../lib/store.ts';
 import { AssetStatusBadge, Badge, Button, Card, Chip, cx, DueBadge, Empty, EquipmentAvatar, Field, PageHeader, SearchField, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
-import { textMatches } from '../lib/search.ts';
+import { rememberSite, textMatches } from '../lib/search.ts';
 import { FloorsSheet } from '../components/FloorTools.tsx';
 import { useDialogs } from '../components/Dialogs.tsx';
 
@@ -17,6 +17,7 @@ const UNASSIGNED = '__none';
 
 export function BuildingPage() {
   const { buildingId = '' } = useParams();
+  useEffect(() => { if (buildingId) rememberSite(buildingId); }, [buildingId]);
   const [params, setParams] = useSearchParams();
   const user = useUser();
   const nav = useNavigate();

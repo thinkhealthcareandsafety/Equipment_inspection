@@ -174,6 +174,18 @@ export function highlight(title: string, query: string): { text: string; on: boo
   });
 }
 
+/* Recently opened sites, remembered on this device */
+const RECENT_SITES = 'think.recentSites';
+export function rememberSite(id: string) {
+  try {
+    const list = JSON.parse(localStorage.getItem(RECENT_SITES) ?? '[]') as string[];
+    localStorage.setItem(RECENT_SITES, JSON.stringify([id, ...list.filter((x) => x !== id)].slice(0, 4)));
+  } catch { /* storage blocked */ }
+}
+export function recentSites(): string[] {
+  try { return JSON.parse(localStorage.getItem(RECENT_SITES) ?? '[]') as string[]; } catch { return []; }
+}
+
 /* Recently opened units, remembered on this device */
 const RECENT_KEY = 'think.recentUnits';
 export function rememberUnit(id: string) {

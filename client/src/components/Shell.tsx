@@ -2,9 +2,10 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Settings, Users,
+  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Search, Settings, Users,
 } from 'lucide-react';
 import { ScanSheet } from './ScanSheet.tsx';
+import { FindSheet } from './FindSheet.tsx';
 import { formatDateTime, isMine } from '@think/shared';
 import { db, wipeLocal } from '../lib/db.ts';
 import { getSession, setSession } from '../lib/api.ts';
@@ -25,6 +26,16 @@ export function Shell() {
   const [syncOpen, setSyncOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  // Ctrl+K / Cmd+K / "/" opens Find from anywhere (not while typing in a field)
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? '');
+      if (((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') || (e.key === '/' && !typing)) { e.preventDefault(); setFindOpen(true); }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
   const dialogs = useDialogs();
   const [whoOpen, setWhoOpen] = useState(false);
   const unnamed = user.name === 'Team';
@@ -82,6 +93,9 @@ export function Shell() {
         </div>
         <div className="px-3 pb-3">
           <Button variant="primary" className="w-full" icon={<ScanLine className="h-5 w-5" />} onClick={() => setScanOpen(true)}>Scan a unit</Button>
+          <button type="button" onClick={() => setFindOpen(true)} className="mt-2 flex h-10 w-full items-center gap-2.5 rounded-[12px] bg-black/[.05] px-3 text-left text-[15px] text-slate-500 transition hover:bg-black/[.08]">
+            <Search className="h-[18px] w-[18px]" /><span className="flex-1">Find a site or unit</span><kbd className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-semibold text-slate-400 shadow-[0_0_0_0.5px_rgb(0_0_0/0.12)]">Ctrl K</kbd>
+          </button>
         </div>
         <nav className="flex-1 space-y-0.5 px-3">
           {nav.map((n) => (
@@ -116,11 +130,14 @@ export function Shell() {
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-10">
           <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
             <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 shrink-0 rounded-[9px]" alt="" />
-            <span className="truncate whitespace-nowrap text-[17px] font-semibold tracking-[-0.01em]">Think Inspect</span>
+            <span className="hidden truncate whitespace-nowrap text-[17px] font-semibold tracking-[-0.01em] min-[380px]:inline">Think Inspect</span>
           </div>
           <div className="flex-1" />
           {IS_DEMO && <span className="hidden rounded-full bg-amber-500/[.16] px-3 py-1 text-[13px] font-medium text-amber-700 sm:inline">Demo · your entries stay in this browser</span>}
           <div className="lg:hidden"><SyncPill compact onClick={() => setSyncOpen(true)} /></div>
+          <button onClick={() => setFindOpen(true)} className="grid h-10 w-10 place-items-center rounded-full text-slate-700 transition hover:bg-black/[.06] active:scale-95 lg:hidden" aria-label="Find a site or unit">
+            <Search className="h-[22px] w-[22px]" />
+          </button>
           <button onClick={() => setNotesOpen(true)} className="relative grid h-10 w-10 place-items-center rounded-full text-slate-600 transition hover:bg-black/[.06] active:scale-95" aria-label="Notifications">
             <Bell className="h-[22px] w-[22px]" />
             {unread > 0 && <span className="absolute right-0.5 top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white ring-2 ring-canvas">{unread}</span>}
@@ -176,6 +193,7 @@ export function Shell() {
       <SyncSheet open={syncOpen} onClose={() => setSyncOpen(false)} />
       <NotificationsSheet open={notesOpen} onClose={() => setNotesOpen(false)} />
       <ScanSheet open={scanOpen} onClose={() => setScanOpen(false)} />
+      <FindSheet open={findOpen} onClose={() => setFindOpen(false)} />
     </div>
   );
 }
