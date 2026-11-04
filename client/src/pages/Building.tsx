@@ -92,7 +92,6 @@ export function BuildingPage() {
     try { nav(`/inspections/${await openOrCreateInspection(a, user)}`); }
     catch (e) { toast((e as Error).message, 'err'); }
   };
-  const todo = (a: Asset) => needsInspection(a);
 
   const currentFloor = floors.find((f) => f.id === floorSel);
 
@@ -179,12 +178,6 @@ export function BuildingPage() {
           </button>
           <DismissButton onClick={hideFloorsTip} label="Hide this tip (Add floors stays above)" />
         </div>
-      )}
-      {can.inspect(user.role) && visible.some(todo) && !selecting && (
-        <Button variant="primary" size="lg" className="mb-4 w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />}
-          onClick={() => startInspection(visible.find(todo)!)}>
-          <span className="text-left leading-tight">Inspect next<span className="block text-xs font-normal opacity-80">{visible.find(todo)!.assetTag} · {visible.filter(todo).length} to go{currentFloor ? ` on ${currentFloor.name}` : ''}</span></span>
-        </Button>
       )}
       {currentFloor && (
         <Card className="mb-4 flex flex-wrap items-center gap-3 p-4">

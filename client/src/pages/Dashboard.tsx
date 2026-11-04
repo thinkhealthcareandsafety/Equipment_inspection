@@ -7,7 +7,7 @@
  */
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { Archive, Building2, CalendarDays, CalendarPlus, ChevronRight, CircleAlert, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
+import { Archive, Building2, CalendarDays, CalendarPlus, ChevronRight, CircleAlert, ClipboardCheck, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
 import {
   addDays, dayLabel, daysLeftIn, diffDays, EQUIPMENT_LABELS, formatDate, fyLabel, inQuarter, isMine, isOpen, missingDetails, pastQuarters, quarterElapsed,
   quarterLabel, quarterLength, quarterName, quarterOf, shiftQuarter, todayISO, weekday, type Quarter,
@@ -26,7 +26,6 @@ export function Dashboard() {
   const nav = useNavigate();
   const [params, setParams] = useSearchParams();
   const tab = params.get('tab') === 'past' ? 'past' : 'now';
-  const [helpHidden, hideHelp] = useDismissed('home-help-link');
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
   const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
@@ -46,7 +45,6 @@ export function Dashboard() {
           <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
           <p className="mt-1.5 text-[16px] text-slate-500">
             <span className="hidden sm:inline">{longDay}, </span>{formatDate(today)} · {quarterName(q)} · {fyLabel(q)}
-            <span className="hidden sm:inline"> · <Link to="/help" className="font-medium text-brand-700 hover:underline">How to use</Link></span>
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row-reverse sm:items-center">
@@ -57,12 +55,6 @@ export function Dashboard() {
           <div className="min-w-0 sm:flex-1 2xl:w-[420px] 2xl:flex-none"><GlobalSearch data={data} /></div>
         </div>
       </div>
-      {!helpHidden && (
-        <div className="mt-2 flex items-center gap-1 sm:hidden">
-          <Link to="/help" className="inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
-          <DismissButton onClick={hideHelp} label="Hide (How to use stays in More)" />
-        </div>
-      )}
 
       <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="w-full sm:w-[340px]">
