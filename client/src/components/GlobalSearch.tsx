@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Clock, MapPin } from 'lucide-react';
-import { dueState, EQUIPMENT_LABELS, type Asset, type Building, type Floor, type Location } from '@think/shared';
+import { EQUIPMENT_LABELS, quarterName, quarterOf, unitQuarterState, type Asset, type Building, type Floor, type Location } from '@think/shared';
 import { buildIndex, highlight, recentUnits, rememberUnit, search } from '../lib/search.ts';
 import { cx, EquipmentAvatar, SearchField } from './ui.tsx';
 
@@ -89,7 +89,7 @@ export function GlobalSearch({ data, placeholder = 'Find a unit or site', id = '
                 i += 1;
                 const idx = i;
                 const out = r.asset?.status === 'out_of_service';
-                const due = r.asset ? dueState(r.asset.nextDueDate) : null;
+                const qs = r.asset ? unitQuarterState(r.asset) : null;
                 return (
                   <button key={r.key} type="button" role="option" aria-selected={idx === active}
                     onPointerEnter={() => setActive(idx)} onClick={() => go(r)}
@@ -103,8 +103,8 @@ export function GlobalSearch({ data, placeholder = 'Find a unit or site', id = '
                       <div className="truncate text-[14px] text-slate-500">{r.sub}</div>
                     </div>
                     {out ? <span className="shrink-0 rounded-full bg-rose-500/[.12] px-2.5 py-1 text-[12px] font-semibold text-rose-600">Do not use</span>
-                      : due === 'overdue' ? <span className="shrink-0 rounded-full bg-amber-500/[.16] px-2.5 py-1 text-[12px] font-semibold text-amber-700">Overdue</span>
-                      : due === 'ok' ? <span className="shrink-0 text-[12px] font-medium text-emerald-600">In date</span> : null}
+                      : qs === 'done' ? <span className="shrink-0 text-[12px] font-semibold text-emerald-600">Done {quarterName(quarterOf())}</span>
+                      : qs === 'closing' ? <span className="shrink-0 rounded-full bg-amber-500/[.16] px-2.5 py-1 text-[12px] font-semibold text-amber-700">Due soon</span> : null}
                   </button>
                 );
               })}

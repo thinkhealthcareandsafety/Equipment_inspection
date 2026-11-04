@@ -1,4 +1,4 @@
-import type { Asset, Building, Client, Floor, Inspection, Location, TeamMember } from '@think/shared';
+import type { Asset, Building, Client, Floor, Inspection, Location, TeamMember, Visit } from '@think/shared';
 
 type Row = Record<string, any>;
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
@@ -7,7 +7,14 @@ const num = (v: unknown) => (v == null ? undefined : Number(v));
 export const toClient = (r: Row): Client => ({ id: r.id, name: r.name, code: r.code, seq: num(r.seq) });
 
 export const toBuilding = (r: Row): Building => ({
-  id: r.id, clientId: r.client_id, name: r.name, city: r.city, code: r.code, address: r.address, notes: r.notes, seq: num(r.seq),
+  id: r.id, clientId: r.client_id, name: r.name, city: r.city, code: r.code, address: r.address, notes: r.notes,
+  contacts: Array.isArray(r.contacts) ? r.contacts : [], seq: num(r.seq),
+});
+
+export const toVisit = (r: Row): Visit => ({
+  id: r.id, clientId: r.client_id, buildingId: r.building_id, date: r.visit_date, inspector: r.inspector ?? '', note: r.note ?? '',
+  status: r.status === 'cancelled' ? 'cancelled' : 'planned', createdBy: r.created_by, createdByName: r.created_by_name ?? '',
+  updatedAt: iso(r.updated_at)!, seq: num(r.seq),
 });
 
 export const toFloor = (r: Row): Floor & { deleted: boolean } => ({

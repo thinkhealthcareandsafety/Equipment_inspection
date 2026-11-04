@@ -2,8 +2,9 @@ import { createPortal } from 'react-dom';
 import { createContext, useCallback, useContext, useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ChevronLeft, X, Accessibility, BedSingle, Layers, Search } from 'lucide-react';
+import { EquipmentArt } from './EquipmentArt.tsx';
 import {
-  dueState, relativeDue, type AssetStatus, type EquipmentType, type InspectionStatus,
+  dueState, formatDate, quarterName, quarterOf, relativeDue, unitQuarterState, type Asset, type AssetStatus, type EquipmentType, type InspectionStatus,
 } from '@think/shared';
 
 export const cx = (...c: (string | number | false | null | undefined)[]) => c.filter((x) => typeof x === 'string' && x).join(' ');
@@ -62,6 +63,15 @@ export function DueBadge({ nextDue }: { nextDue: string | null }) {
   return <Badge tone={tone} dot>{relativeDue(nextDue)}</Badge>;
 }
 
+/** Where a unit stands this quarter: done, to do, or to do with the quarter about to close. */
+export function QuarterBadge({ asset, short }: { asset: Pick<Asset, 'lastInspectionDate'>; short?: boolean }) {
+  const q = quarterOf();
+  const s = unitQuarterState(asset);
+  if (s === 'done') return <Badge tone="green" dot>{short ? 'Done' : `Done for ${quarterName(q)}`}</Badge>;
+  if (s === 'closing') return <Badge tone="amber" dot>{`Due by ${formatDate(q.to).slice(0, 6)}`}</Badge>;
+  return <Badge tone="slate" dot>{short ? 'To do' : `To do in ${quarterName(q)}`}</Badge>;
+}
+
 export const ASSET_STATUS: Record<AssetStatus, { label: string; tone: Tone }> = {
   in_service: { label: 'In service', tone: 'green' },
   out_of_service: { label: 'Out of service', tone: 'red' },
@@ -90,15 +100,9 @@ export function EquipmentIcon({ type, className = 'h-5 w-5' }: { type: Equipment
   return <I className={className} strokeWidth={1.8} />;
 }
 
-/** Rounded-square glyph tile, like an app icon in Settings. Colour tells the product apart; red/amber flag a problem. */
-export function EquipmentAvatar({ type, tone = 'default' }: { type: EquipmentType; tone?: 'default' | 'red' | 'amber' }) {
-  const bg = tone === 'red' ? 'bg-rose-500' : tone === 'amber' ? 'bg-amber-500'
-    : type === 'wheelchair' ? 'bg-sky-500' : type === 'scoop_stretcher' ? 'bg-brand-500' : 'bg-violet-500';
-  return (
-    <div className={cx('grid h-10 w-10 shrink-0 place-items-center rounded-[10px] text-white shadow-[inset_0_-1px_0_rgb(0_0_0/0.1)]', bg)}>
-      <EquipmentIcon type={type} className="h-[22px] w-[22px]" />
-    </div>
-  );
+/** The product's picture on a soft tile (see EquipmentArt). Red/amber flag a problem. */
+export function EquipmentAvatar({ type, tone = 'default', size = 44 }: { type: EquipmentType; tone?: 'default' | 'red' | 'amber'; size?: number }) {
+  return <EquipmentArt type={type} tone={tone} size={size} />;
 }
 
 export function PageHeader({ title, subtitle, back, actions, eyebrow }: { title: ReactNode; subtitle?: ReactNode; back?: string | true; actions?: ReactNode; eyebrow?: ReactNode }) {

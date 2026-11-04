@@ -32,10 +32,11 @@ export const can = {
 /** Everything the dashboards and reports need, live from IndexedDB. */
 export function useAllData() {
   return useLiveQuery(async () => {
-    const [clients, buildings, floors, locations, assets, inspections] = await Promise.all([
+    const [clients, buildings, floors, locations, assets, inspections, visits] = await Promise.all([
       db.clients.toArray(), db.buildings.toArray(), db.floors.toArray(), db.locations.toArray(), db.assets.toArray(), db.inspections.toArray(),
+      db.visits.toArray(),
     ]);
-    return { clients, buildings, floors, locations, assets, inspections };
+    return { clients, buildings, floors, locations, assets, inspections, visits };
   }, []);
 }
 

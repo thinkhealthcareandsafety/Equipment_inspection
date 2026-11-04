@@ -170,14 +170,64 @@ CREATE TABLE IF NOT EXISTS import_batches (
   created_at timestamptz NOT NULL DEFAULT now(), summary jsonb NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS visits (
+  id uuid PRIMARY KEY, client_id uuid NOT NULL, building_id uuid NOT NULL REFERENCES buildings(id),
+  visit_date text NOT NULL, inspector text NOT NULL DEFAULT '', note text NOT NULL DEFAULT '',
+  status text NOT NULL DEFAULT 'planned', created_by uuid, created_by_name text NOT NULL DEFAULT '',
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  seq bigint NOT NULL DEFAULT nextval('change_seq')
+);
+CREATE INDEX IF NOT EXISTS visits_seq ON visits(seq);
+
+ALTER TABLE buildings ADD COLUMN IF NOT EXISTS contacts jsonb NOT NULL DEFAULT '[]';
+
+CREATE TABLE IF NOT EXISTS app_flags (
+  key text PRIMARY KEY, value jsonb, at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS sync_ops (
   op_id text PRIMARY KEY, user_id uuid, applied_at timestamptz NOT NULL DEFAULT now(), result jsonb
 );
 `;
 
-async function migrate(q: Queryable) {
-  for (const stmt of SCHEMA.split(';').map((x) => x.trim()).filter(Boolean)) await q.query(stmt);
-  await retireGenericStretcher(q);
+async function migrate(d: Db) {
+  for (const stmt of SCHEMA.split(';').map((x) => x.trim()).filter(Boolean)) await d.query(stmt);
+  await retireGenericStretcher(d);
+  await clearTrialInspections(d);
+}
+
+/**
+ * Going live (November 2026). Every inspection recorded before this version first starts in production was a
+ * trial. Once, and in production only, they are discarded (soft delete: kept on the server for the audit trail,
+ * hidden on every device after its next sync) and their units go back to "never inspected", exactly as imported.
+ * The app_flags row makes it run once; claiming it inside the transaction stops two cold starts doing it twice.
+ * CLEAR_TRIAL_INSPECTIONS=1 runs it elsewhere (local testing).
+ */
+export async function clearTrialInspections(d: Db, force = false) {
+  if (!force && process.env.VERCEL_ENV !== 'production' && process.env.CLEAR_TRIAL_INSPECTIONS !== '1') return null;
+  return d.tx(async (q) => {
+    const claimed = await q.query(`INSERT INTO app_flags (key, value) VALUES ('trial_inspections_cleared', '{}') ON CONFLICT (key) DO NOTHING RETURNING key`);
+    if (!claimed.rows.length) return null;
+    const before = (await q.query<{ id: string; asset_id: string; status: string; inspection_date: string | null }>(
+      `SELECT id, asset_id, status, inspection_date FROM inspections WHERE status <> 'discarded' AND created_at < now()`)).rows;
+    const assetsBefore = (await q.query(
+      `SELECT id, asset_tag, status, status_reason, open_defects, last_inspection_id, last_inspection_date, last_result, next_due_date, previous_maintenance_date
+       FROM assets WHERE last_inspection_id IS NOT NULL OR open_defects <> '[]'::jsonb OR status = 'retest_required'
+         OR id IN (SELECT asset_id FROM inspections WHERE created_at < now())`)).rows;
+    await q.query(`UPDATE inspections SET status = 'discarded', doc = jsonb_set(doc, '{status}', '"discarded"'), updated_at = now(), seq = nextval('change_seq')
+      WHERE status <> 'discarded' AND created_at < now()`);
+    await q.query(`UPDATE assets SET
+        status = CASE WHEN data_flags @> '["TAKEN_FOR_REPLACEMENT"]'::jsonb THEN 'out_of_service' ELSE 'in_service' END,
+        status_reason = CASE WHEN data_flags @> '["TAKEN_FOR_REPLACEMENT"]'::jsonb THEN 'Inventory notes this unit was taken for replacement' ELSE NULL END,
+        open_defects = '[]', last_inspection_id = NULL, last_inspection_date = NULL, last_result = NULL, next_due_date = NULL,
+        previous_maintenance_date = NULL, updated_at = now(), seq = nextval('change_seq')
+      WHERE id = ANY($1::uuid[])`, [assetsBefore.map((a: any) => a.id)]);
+    const summary = { inspections: before.length, assets: assetsBefore.length };
+    await q.query(`UPDATE app_flags SET value = $1 WHERE key = 'trial_inspections_cleared'`, [JSON.stringify(summary)]);
+    await audit(q, { action: 'trial.clear', entityType: 'system', changes: { ...summary, inspections: before, assets: assetsBefore } });
+    console.log(`[go-live] Cleared ${before.length} trial inspection(s); ${assetsBefore.length} unit(s) back to never inspected.`);
+    return summary;
+  });
 }
 
 /**

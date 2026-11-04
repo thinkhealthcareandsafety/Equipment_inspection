@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { ClipboardCheck, Database, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
-import { DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, type Asset, type Building } from '@think/shared';
+import { CalendarClock, CircleCheck, ClipboardCheck, Database, Factory, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
+import {
+  DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, quarterLock, quarterName, quarterOf, todayISO, type Asset, type Building,
+} from '@think/shared';
 import { downloadQrLabels, qrDataUrl, unitUrl } from '../lib/qr.ts';
 import { rememberUnit } from '../lib/search.ts';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
 import { createInspection, updateAsset } from '../lib/store.ts';
 import { downloadInspectionPack } from '../lib/exportPack.ts';
-import { AssetStatusBadge, Badge, Button, Card, DueBadge, Empty, EquipmentAvatar, Field, InspectionStatusBadge, PageHeader, Sheet, useToast } from '../components/ui.tsx';
+import { AssetStatusBadge, Badge, Button, Card, Empty, EquipmentAvatar, Field, InspectionStatusBadge, PageHeader, QuarterBadge, Sheet, useToast } from '../components/ui.tsx';
+import { DateField, Select, Suggestions } from '../components/Pickers.tsx';
 import { Skeleton } from './Dashboard.tsx';
 
 export function AssetPage() {
@@ -38,20 +41,48 @@ export function AssetPage() {
   const failed = inspections.find((i) => i.id === asset.lastInspectionId);
   const needsRetest = asset.status === 'out_of_service' || asset.status === 'retest_required';
 
+  const lock = quarterLock(asset);
+  const q = quarterOf();
+  const lastSigned = inspections.find((i) => i.id === asset.lastInspectionId);
   const start = async () => {
     if (draft) return nav(`/inspections/${draft.id}`);
-    const id = await createInspection(asset, user, needsRetest && failed ? { kind: 'retest', retestOf: failed.id } : {});
-    nav(`/inspections/${id}`);
+    try {
+      const id = await createInspection(asset, user, needsRetest && failed ? { kind: 'retest', retestOf: failed.id } : {});
+      nav(`/inspections/${id}`);
+    } catch (e) { toast((e as Error).message, 'err'); }
   };
+  const make = asset.manufacturer ?? (asset.candidateMakes.length ? `${asset.candidateMakes.join(' or ')} (to confirm)` : null);
   const flags = asset.dataFlags.filter((f) => f !== 'SERIAL_MISSING' || !asset.serialNumber);
 
   return (
     <>
-      <PageHeader back={`/sites/${asset.buildingId}`} eyebrow={`${building?.name}, ${building?.city}`}
-        title={<span className="flex items-center gap-3"><EquipmentAvatar type={asset.equipmentType} tone={asset.status === 'out_of_service' ? 'red' : 'default'} /><span className="min-w-0 break-all text-[26px] sm:text-[34px]">{asset.assetTag}</span></span>}
-        subtitle={<span className="flex flex-wrap items-center gap-2">{EQUIPMENT_LABELS[asset.equipmentType]} <AssetStatusBadge status={asset.status} /> <DueBadge nextDue={asset.nextDueDate} /></span>}
-        actions={can.inspect(user.role) ? <Button variant={needsRetest ? 'danger' : 'primary'} size="lg" className="w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />} onClick={start}>
+      <PageHeader back={`/sites/${asset.buildingId}`}
+        title={<span className="flex items-center gap-4">
+          <EquipmentAvatar type={asset.equipmentType} size={76} tone={asset.status === 'out_of_service' ? 'red' : asset.status === 'retest_required' ? 'amber' : 'default'} />
+          <span className="min-w-0">
+            <span className="block break-all text-[26px] sm:text-[34px]">{asset.assetTag}</span>
+            <span className="mt-1 block text-[15px] font-medium tracking-normal text-slate-500">{EQUIPMENT_LABELS[asset.equipmentType]} · {building?.name}, {building?.city}</span>
+          </span>
+        </span>}
+        subtitle={<span className="mt-1 flex flex-col gap-2.5">
+          <span className={make ? 'flex items-start gap-2 text-[17px] font-semibold leading-snug text-slate-900' : 'text-[16px] italic text-slate-400'}>
+            {make && <Factory className="mt-1 h-4 w-4 shrink-0 text-brand-600" strokeWidth={2.2} />}{make ?? 'Make not recorded'}
+          </span>
+          <span className="flex flex-wrap items-center gap-2"><AssetStatusBadge status={asset.status} /><QuarterBadge asset={asset} /></span>
+        </span>}
+        actions={can.inspect(user.role) && (draft || !lock) ? <Button variant={needsRetest ? 'danger' : 'primary'} size="lg" className="w-full sm:w-auto" icon={<ClipboardCheck className="h-5 w-5" />} onClick={start}>
           {draft ? 'Continue inspection' : needsRetest ? 'Start re-test' : 'Start inspection'}</Button> : undefined} />
+
+      {lock && !draft && (
+        <div data-quarter-done className="mb-6 flex flex-wrap items-center gap-3 rounded-[20px] bg-emerald-500/[.09] p-4 ring-1 ring-emerald-500/20 sm:p-5">
+          <CircleCheck className="h-7 w-7 shrink-0 text-emerald-600" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[17px] font-semibold text-emerald-900">Done for {quarterName(lock.quarter)}</div>
+            <div className="text-[15px] text-emerald-900/75">Inspected {formatDate(lock.lastDate)}{lastSigned?.header.technician ? ` by ${lastSigned.header.technician}` : ''}. The {quarterName(lock.opens)} inspection opens on {formatDate(lock.opens.from)}.</div>
+          </div>
+          {lastSigned && <Button size="sm" icon={<FileText className="h-4 w-4" />} onClick={() => downloadInspectionPack(lastSigned.id).catch((e) => toast(e.message, 'err'))}>Certificate</Button>}
+        </div>
+      )}
 
       {asset.status === 'out_of_service' && (
         <div className="mb-6 flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
@@ -73,7 +104,7 @@ export function AssetPage() {
               <Item k="Location" v={location?.name} />
               <Item k="Installed / purchased" v={asset.installDate ? `${formatDate(asset.installDate)}${asset.installDateEstimated ? ' (estimated)' : ''}` : null} />
               <Item k="Last inspected" v={formatDate(asset.lastInspectionDate)} />
-              <Item k="Next due" v={formatDate(asset.nextDueDate)} />
+              <Item k="Next inspection" v={lock ? `${quarterName(lock.opens)} · opens ${formatDate(lock.opens.from)}` : `${quarterName(q)} · by ${formatDate(q.to)}`} />
               <Item k="Age (inventory)" v={asset.ageRaw} />
             </dl>
           </Card>
@@ -95,7 +126,7 @@ export function AssetPage() {
 
           <Card>
             <div className="px-5 pb-2 pt-5 font-semibold">Inspection history</div>
-            {inspections.length === 0 ? <Empty title="Not inspected yet">The first inspection sets the baseline and the next due date.</Empty> : (
+            {inspections.length === 0 ? <Empty title="Not inspected yet" icon={<CalendarClock className="h-6 w-6" />}>One inspection a quarter. This unit is due in {quarterName(q)}, by {formatDate(q.to)}.</Empty> : (
               <ol className="relative mx-5 mb-5 border-l border-slate-200">
                 {inspections.map((i) => (
                   <li key={i.id} className="ml-5 py-3">
@@ -172,13 +203,15 @@ function EditAsset({ open, onClose, asset, floors, locations, onSaved }: { open:
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Serial number"><input className="input" value={f.serialNumber} onChange={(e) => setF({ ...f, serialNumber: e.target.value })} /></Field>
         <Field label="Manufacturer / Brand" hint={asset.candidateMakes.length ? `Inventory lists: ${asset.candidateMakes.join(', ')}` : undefined}>
-          <input className="input" list="makes" value={f.manufacturer} onChange={(e) => setF({ ...f, manufacturer: e.target.value })} />
-          <datalist id="makes">{asset.candidateMakes.map((m) => <option key={m} value={m} />)}</datalist>
+          <input className="input" value={f.manufacturer} onChange={(e) => setF({ ...f, manufacturer: e.target.value })} />
+          <Suggestions items={asset.candidateMakes.filter((m) => m !== f.manufacturer)} onPick={(m) => setF({ ...f, manufacturer: m })} />
         </Field>
         <Field label="Model"><input className="input" value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} /></Field>
-        <Field label="Date of installation / purchase"><input type="date" className="input" value={f.installDate} onChange={(e) => setF({ ...f, installDate: e.target.value })} /></Field>
-        <Field label="Floor"><select className="input" value={f.floorId} onChange={(e) => setF({ ...f, floorId: e.target.value, locationId: '' })}><option value="">Unassigned</option>{floors.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
-        <Field label="Location"><select className="input" value={f.locationId} disabled={!f.floorId} onChange={(e) => setF({ ...f, locationId: e.target.value })}><option value="">—</option>{locations.filter((l) => l.floorId === f.floorId).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
+        <Field label="Date of installation / purchase"><DateField clearable max={todayISO()} placeholder="Not recorded" value={f.installDate} onChange={(v) => setF({ ...f, installDate: v })} ariaLabel="Date of installation or purchase" /></Field>
+        <Field label="Floor"><Select value={f.floorId} onChange={(v) => setF({ ...f, floorId: v, locationId: '' })} ariaLabel="Floor"
+          options={[{ value: '', label: 'Unassigned', text: 'Unassigned' }, ...floors.map((x) => ({ value: x.id, label: x.name, text: x.name }))]} /></Field>
+        <Field label="Location"><Select value={f.locationId} disabled={!f.floorId} onChange={(v) => setF({ ...f, locationId: v })} ariaLabel="Location" placeholder={f.floorId ? 'No specific location' : 'Choose a floor first'}
+          options={[{ value: '', label: 'No specific location', text: 'No specific location' }, ...locations.filter((l) => l.floorId === f.floorId).map((x) => ({ value: x.id, label: x.name, text: x.name }))]} /></Field>
       </div>
       <p className="mt-4 text-xs text-slate-500">Every change is recorded in the audit trail with your name and the time.</p>
     </Sheet>

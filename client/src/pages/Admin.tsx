@@ -12,6 +12,7 @@ import { blankChecklist } from '../lib/pdf.ts';
 import { saveFile } from '../lib/files.ts';
 import { IS_DEMO } from '../lib/demo.ts';
 import { Badge, Button, Card, cx, Empty, Field, PageHeader, Segmented, Sheet, useToast } from '../components/ui.tsx';
+import { Select } from '../components/Pickers.tsx';
 
 type Tab = 'import' | 'audit' | 'templates';
 
@@ -117,9 +118,8 @@ function ImportTab() {
           <Card className="p-5">
             <div className="grid gap-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
               <Field label="Import into client">
-                <select className="input" value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                  <option value="">New client…</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <Select value={clientId} onChange={setClientId} ariaLabel="Import into client"
+                  options={[{ value: '', label: 'New client…', text: 'New client' }, ...clients.map((c) => ({ value: c.id, label: c.name, text: c.name }))]} />
               </Field>
               {!clientId ? <Field label="New client name"><input className="input" value={newClient} onChange={(e) => setNewClient(e.target.value)} placeholder="e.g. JLL" /></Field> : <div />}
               <Button variant="primary" size="lg" disabled={busy || (!clientId && !newClient.trim())} onClick={commit}>{busy ? 'Importing…' : `Import ${preview.units.length} units`}</Button>
@@ -174,7 +174,7 @@ function TemplatesTab() {
       {templates.map((t) => (
         <Card key={`${t.id}-${t.version}`} className="p-5">
           <div className="flex items-start justify-between gap-3">
-            <div><div className="font-semibold">{t.shortName}</div><div className="text-xs text-slate-500">v{t.version} · next due +{t.intervalDays} days · re-test within {t.retestWithinDays} days</div></div>
+            <div><div className="font-semibold">{t.shortName}</div><div className="text-xs text-slate-500">v{t.version} · once a quarter · re-test within {t.retestWithinDays} days</div></div>
             {t.provenance === 'paper-form' ? <Badge tone="green">From client paper form</Badge> : <Badge tone="amber">Drafted — needs client sign-off</Badge>}
           </div>
           <ol className="mt-4 space-y-1.5 text-sm">

@@ -99,6 +99,12 @@ async function push() {
         if (op.type === 'inspection.upsert' && r.result) await acceptServerInspection(r.result as Inspection);
         if (op.type === 'photo.put') await db.photos.update(op.entityId, { synced: true });
         if (op.type === 'asset.update' && r.result) await db.assets.put(r.result);
+        if (op.type === 'visit.upsert' && r.result?.id) await db.visits.put(r.result);
+        if (op.type === 'building.contacts' && r.result?.id) await db.buildings.put(r.result);
+      } else if (op.type === 'inspection.upsert' && r.current?.status === 'discarded') {
+        progressed = true;
+        await db.outbox.delete(op.seq!);
+        await db.inspections.put(r.current);
       } else {
         const permanent = r.code === 'conflict' || r.code === 'forbidden' || op.attempts + 1 >= RETRYABLE_LIMIT;
         await db.outbox.update(op.seq!, { attempts: op.attempts + 1, lastError: r.error, state: permanent ? 'failed' : 'pending' });
@@ -135,6 +141,7 @@ interface PullResponse {
   hasMore?: boolean;
   clients: any[]; buildings: any[]; floors: any[]; locations: any[]; assets: any[]; inspections: Inspection[];
   photos: any[]; templates: any[]; team: any[]; notifications: any[];
+  visits?: any[];
 }
 
 async function pull() {
@@ -149,13 +156,14 @@ async function pull() {
 }
 
 async function applyPull(d: PullResponse) {
-  await db.transaction('rw', [db.clients, db.buildings, db.floors, db.locations, db.assets, db.inspections, db.photos, db.templates, db.team, db.notifications, db.outbox, db.meta], async () => {
+  await db.transaction('rw', [db.clients, db.buildings, db.floors, db.locations, db.assets, db.inspections, db.photos, db.templates, db.team, db.notifications, db.visits, db.outbox, db.meta], async () => {
+    // Rows with queued local edits keep the local copy until the edit is acknowledged.
+    const busy = new Set((await db.outbox.where('state').equals('pending').toArray()).map((o) => o.entityId));
     await db.clients.bulkPut(d.clients);
-    await db.buildings.bulkPut(d.buildings);
+    await db.buildings.bulkPut(d.buildings.filter((b) => !busy.has(b.id)));
+    await db.visits.bulkPut((d.visits ?? []).filter((v) => !busy.has(v.id)));
     for (const f of d.floors) f.deleted ? await db.floors.delete(f.id) : await db.floors.put(f);
     for (const l of d.locations) l.deleted ? await db.locations.delete(l.id) : await db.locations.put(l);
-    // Assets with queued local edits keep the local copy until the edit is acknowledged.
-    const busy = new Set((await db.outbox.where('state').equals('pending').toArray()).map((o) => o.entityId));
     await db.assets.bulkPut(d.assets.filter((a) => !busy.has(a.id)));
     for (const i of d.inspections) if (!busy.has(i.id)) await db.inspections.put(i);
     for (const p of d.photos) { const ex = await db.photos.get(p.id); if (!ex) await db.photos.put({ ...p, synced: true }); }

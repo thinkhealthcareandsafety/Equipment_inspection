@@ -2,7 +2,8 @@ import type {
   Asset, AssetStatus, CheckEntry, FunctionalTest, Inspection, InspectionHeader, InspectionResult, OpenDefect,
 } from './types.ts';
 import type { ChecklistTemplate } from './templates.ts';
-import { addDays, isISODate } from './dates.ts';
+import { isISODate } from './dates.ts';
+import { nextQuarterDue } from './quarters.ts';
 
 export interface Issue {
   path: string; // e.g. "checks.3.remark", "functionalTest.result"
@@ -169,8 +170,12 @@ export function validateInspection(t: ChecklistTemplate, insp: Inspection, forSu
 
 export const blocking = (issues: Issue[]) => issues.filter((i) => i.severity === 'error');
 
-export function nextDueFrom(inspectionDate: string, t: ChecklistTemplate): string {
-  return addDays(inspectionDate, t.intervalDays);
+/**
+ * Inspections are quarterly (financial-year quarters): a unit inspected any day in Q3 is next due in Q4,
+ * by Q4's last day. The template's intervalDays is kept for reference only.
+ */
+export function nextDueFrom(inspectionDate: string, _t?: ChecklistTemplate): string {
+  return nextQuarterDue(inspectionDate);
 }
 
 /**

@@ -1,70 +1,45 @@
 /**
- * Home, in plain words. It answers three questions:
- *  1. Where do we stand?   one sentence and one progress bar for the quarter
- *  2. What do I do now?    pick a site, find a unit, or scan its QR label
- *  3. What needs me?       approvals, unfinished inspections, units that must not be used
- * Then the round by city, today's work and the sites with the most left to do.
+ * Home. Everything the boss needs at a glance, in order:
+ *  1. The quarter: how much is done, how much time is left, and whether we are on pace.
+ *  2. Six numbers, each one tap from its list.
+ *  3. What needs attention, what is planned next, and progress by city.
+ * "Past quarters" keeps every finished quarter's final numbers; a new quarter starts by itself on its first day.
  */
 import { useMemo, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
-import { Building2, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
-import { dueState, EQUIPMENT_LABELS, formatDate, isMine, isOpen, todayISO } from '@think/shared';
+import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Archive, Building2, CalendarDays, CalendarPlus, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
+import {
+  addDays, dayLabel, daysLeftIn, diffDays, EQUIPMENT_LABELS, formatDate, fyLabel, inQuarter, isMine, isOpen, pastQuarters, quarterElapsed,
+  quarterLabel, quarterLength, quarterName, quarterOf, shiftQuarter, todayISO, weekday, type Quarter,
+} from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
-import { buildReport, EMPTY_FILTERS, periodLabel } from '../lib/reports.ts';
-import { Button, Card, cx, Empty, InspectionStatusBadge } from '../components/ui.tsx';
+import { buildReport, closingSoon, EMPTY_FILTERS } from '../lib/reports.ts';
+import { Button, Card, cx, Empty, InspectionStatusBadge, Segmented } from '../components/ui.tsx';
 import { GlobalSearch } from '../components/GlobalSearch.tsx';
+import { ContactActions, DateTile } from '../components/Plan.tsx';
+
+type AllData = NonNullable<ReturnType<typeof useAllData>>;
 
 export function Dashboard() {
   const user = useUser();
   const data = useAllData();
   const nav = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') === 'past' ? 'past' : 'now';
   const report = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'building'), [data]);
   const byCity = useMemo(() => data && buildReport(data, EMPTY_FILTERS, 'city').groups.slice().sort((a, b) => b.assets - a.assets), [data]);
   if (!data || !report) return <Skeleton />;
   if (!data.assets.length) return <Empty title="Downloading your sites…" icon={<ClipboardCheck className="h-6 w-6" />}>The first sync downloads every site and unit so you can work offline.</Empty>;
 
-  const bById = new Map(data.buildings.map((b) => [b.id, b]));
-  const k = report.kpis;
-  const total = k.assets;
-  const done = k.inDate;
-  const outList = data.assets.filter((a) => a.status === 'out_of_service');
-  const overdue = data.assets.filter((a) => a.status !== 'out_of_service' && dueState(a.nextDueDate) === 'overdue').length;
-  const mine = data.inspections.filter((i) => isOpen(i) && isMine(i, user))
-    .sort((a, b) => Number(b.status === 'returned') - Number(a.status === 'returned') || b.updatedAt.localeCompare(a.updatedAt));
-  const reviewQueue = can.review(user.role) ? data.inspections.filter((i) => i.status === 'submitted') : [];
-
-  // Today's work by person
   const today = todayISO();
-  const people = [...data.inspections.filter((i) => (i.status === 'submitted' || i.status === 'finalized') && i.header.inspectionDate === today).reduce((m, i) => {
-    const name = i.header.technician || 'Unknown';
-    const r = m.get(name) ?? { name, count: 0, fails: 0 };
-    r.count++; if (i.result.defectsIdentified) r.fails++;
-    return m.set(name, r);
-  }, new Map<string, { name: string; count: number; fails: number }>()).values()].sort((a, b) => b.count - a.count);
-
-  // Sites with the most left to do
-  const sites = data.buildings.map((b) => {
-    const list = data.assets.filter((a) => a.buildingId === b.id);
-    return { b, todo: list.filter((a) => dueState(a.nextDueDate) !== 'ok').length, oos: list.filter((a) => a.status === 'out_of_service').length, total: list.length };
-  }).filter((s) => s.todo || s.oos).sort((a, b) => b.oos - a.oos || b.todo - a.todo).slice(0, 5);
-
-  const pct = total ? Math.round((done / total) * 100) : 0;
-  const quarter = periodLabel('quarter');
-  const attention = reviewQueue.length + mine.length + outList.length + (overdue ? 1 : 0);
+  const q = report.quarter;
+  const longDay = ({ Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' } as Record<string, string>)[weekday(today)];
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="text-[13px] font-semibold uppercase tracking-[0.05em] text-slate-500">{formatDate(todayISO())}</div>
       <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">{user.name === 'Team' ? 'Hello' : `Hello, ${user.name.split(' ')[0]}`}</h1>
+      <p className="mt-1.5 text-[16px] text-slate-500"><span className="hidden sm:inline">{longDay}, </span>{formatDate(today)} · {quarterName(q)} · {fyLabel(q)}</p>
 
-      {/* 1. Where do we stand */}
-      <p data-summary className="mt-2 max-w-2xl text-[17px] leading-relaxed text-slate-600">
-        {done === 0 ? <>No unit has been inspected yet this quarter. <strong className="text-slate-900">{total} units</strong> at {data.buildings.length} sites are waiting.</>
-          : <><strong className="text-slate-900">{done} of {total} units</strong> are inspected and in date ({pct}%).</>}
-        {outList.length > 0 && <> <span className="font-semibold text-rose-600">{outList.length} {outList.length === 1 ? 'unit is' : 'units are'} out of service</span> and must not be used.</>}
-      </p>
-
-      {/* 2. What do I do now */}
       <div className="mt-5 grid grid-cols-2 gap-3 sm:flex">
         <Button size="lg" variant="primary" className="whitespace-nowrap !px-3 sm:!px-6" icon={<Building2 className="h-5 w-5 shrink-0" />} onClick={() => nav('/sites')}>Pick a site</Button>
         <Button size="lg" className="whitespace-nowrap !px-3 sm:!px-6" icon={<ScanLine className="h-5 w-5 shrink-0" />} onClick={() => window.dispatchEvent(new Event('think:scan'))}>Scan label</Button>
@@ -72,12 +47,104 @@ export function Dashboard() {
       <div className="mt-3"><GlobalSearch data={data} /></div>
       <Link to="/help" className="mt-3 inline-flex items-center gap-1.5 px-1 text-[15px] font-medium text-brand-700"><LifeBuoy className="h-4 w-4" />New here? How to use the app</Link>
 
-      {/* 3. What needs me */}
+      <div className="mb-3 mt-8 w-full sm:w-[340px]">
+        <Segmented value={tab} onChange={(t) => setParams(t === 'past' ? { tab: 'past' } : {}, { replace: true })}
+          options={[{ value: 'now', label: `${quarterName(q)} · this quarter` }, { value: 'past', label: 'Past quarters' }]} />
+      </div>
+
+      {tab === 'now' ? <ThisQuarter data={data} report={report} byCity={byCity ?? []} /> : <PastQuarters data={data} total={report.kpis.assets} today={today} />}
+    </div>
+  );
+}
+
+// ---------- this quarter ----------
+
+type Report = ReturnType<typeof buildReport>;
+
+function ThisQuarter({ data, report, byCity }: { data: AllData; report: Report; byCity: Report['groups'] }) {
+  const user = useUser();
+  const today = todayISO();
+  const q = report.quarter;
+  const next = shiftQuarter(q, 1);
+  const k = report.kpis;
+  const total = k.assets, done = k.inDate, todo = k.todo;
+  const bById = new Map(data.buildings.map((b) => [b.id, b]));
+  const outList = report.assets.filter((a) => a.status === 'out_of_service');
+  const failedThisQuarter = outList.filter((a) => inQuarter(a.lastInspectionDate, q)).length;
+  const mine = data.inspections.filter((i) => isOpen(i) && isMine(i, user))
+    .sort((a, b) => Number(b.status === 'returned') - Number(a.status === 'returned') || b.updatedAt.localeCompare(a.updatedAt));
+  const reviewQueue = can.review(user.role) ? data.inspections.filter((i) => i.status === 'submitted') : [];
+
+  // Pace: share of units done vs share of the quarter gone, and what a working day (Mon–Sat) needs from here.
+  const elapsed = quarterElapsed(q, today);
+  const share = total ? done / total : 0;
+  const workDays = Array.from({ length: daysLeftIn(q, today) }, (_, i) => addDays(today, i)).filter((d) => weekday(d) !== 'Sun').length;
+  const perDay = workDays ? Math.ceil(todo / workDays) : todo;
+  const pace = todo === 0 ? 'done' : share + 0.02 >= elapsed ? 'on' : 'behind';
+
+  const sitesWithWork = report.groups.filter((g) => g.todo > 0).length;
+  const sitesDone = report.groups.length - sitesWithWork;
+  const upcoming = data.visits.filter((v) => v.status === 'planned' && v.date >= today && bById.has(v.buildingId)).sort((a, b) => a.date.localeCompare(b.date));
+  const plannedSites = new Set(upcoming.map((v) => v.buildingId));
+  const unplanned = report.groups.filter((g) => g.todo > 0 && !plannedSites.has(g.key)).length;
+  const left = new Map(report.groups.map((g) => [g.key, g.todo]));
+
+  const people = [...data.inspections.filter((i) => (i.status === 'submitted' || i.status === 'finalized') && i.header.inspectionDate === today).reduce((m, i) => {
+    const name = i.header.technician || 'Unknown';
+    const r = m.get(name) ?? { name, count: 0, fails: 0 };
+    r.count++; if (i.result.defectsIdentified) r.fails++;
+    return m.set(name, r);
+  }, new Map<string, { name: string; count: number; fails: number }>()).values()].sort((a, b) => b.count - a.count);
+
+  const closing = closingSoon(report);
+  const attention = reviewQueue.length + mine.length + outList.length + (closing ? 1 : 0);
+  const pct = total ? Math.round(share * 100) : 0;
+
+  return (
+    <>
+      {/* The quarter board */}
+      <Card data-board className="overflow-hidden">
+        <div className="p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[21px] font-bold tracking-[-0.02em]">{quarterLabel(q)}</div>
+              <div className="text-[15px] text-slate-500">{fyLabel(q)} · closes {formatDate(q.to)}</div>
+            </div>
+            <span className={cx('rounded-full px-3 py-1.5 text-[14px] font-semibold tabular', closing ? 'bg-amber-500/[.16] text-amber-700' : 'bg-black/[.05] text-slate-700')}>
+              {report.daysLeft} {report.daysLeft === 1 ? 'day' : 'days'} left
+            </span>
+          </div>
+          <div className="mt-5 flex flex-wrap items-baseline gap-x-2.5">
+            <span data-done className="text-[46px] font-bold leading-none tracking-[-0.035em] tabular">{done}</span>
+            <span className="text-[17px] text-slate-500">of {total} units done · {pct}%</span>
+          </div>
+          <PaceBar q={q} today={today} done={done - failedThisQuarter} failed={failedThisQuarter} total={total} />
+          <p data-pace className="mt-4 text-[15px] leading-relaxed text-slate-600">
+            {pace === 'done' ? <><strong className="text-emerald-700">Every unit is done for {quarterName(q)}.</strong> {quarterName(next)} opens on {formatDate(next.from)}.</>
+              : pace === 'on' ? <><strong className="text-slate-900">On pace.</strong> {todo} to go: about {perDay} {perDay === 1 ? 'unit' : 'units'} a working day finishes by {formatDate(q.to)}.</>
+              : <><strong className="text-amber-700">Behind pace.</strong> {Math.round(elapsed * 100)}% of the quarter has gone and {pct}% of units are done. About {perDay} a working day finishes by {formatDate(q.to)}.</>}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-px border-t-[0.5px] border-black/10 bg-black/[.07] sm:grid-cols-3">
+          <Kpi to="/reports?view=done" label="Done" value={done} sub={`of ${total} units`} tone={done ? 'green' : 'muted'} />
+          <Kpi to="/reports?view=due" label="To inspect" value={todo} sub={`at ${sitesWithWork} ${sitesWithWork === 1 ? 'site' : 'sites'}`} tone={closing ? 'amber' : 'ink'} />
+          <Kpi to="/reports?view=oos" label="Do not use" value={k.outOfService} sub="out of service" tone={k.outOfService ? 'red' : 'muted'} />
+          <Kpi to="/reports?view=defects" label="Problems" value={k.openDefects} sub={k.openDefects ? `${k.safetyCritical} on safety checks` : 'none open'} tone={k.openDefects ? 'red' : 'muted'} />
+          <Kpi to="/sites" label="Sites finished" value={sitesDone} sub={`of ${report.groups.length} sites`} tone={sitesDone ? 'green' : 'muted'} />
+          <Kpi to="/schedule" label="Visits planned" value={upcoming.length} sub={unplanned ? `${unplanned} ${unplanned === 1 ? 'site' : 'sites'} not planned` : 'every site planned'} tone="ink" />
+        </div>
+        <div className="border-t-[0.5px] border-black/10 bg-black/[.02] px-5 py-3 text-[13px] leading-relaxed text-slate-500 sm:px-6">
+          When {quarterName(q)} closes on {formatDate(q.to)}, its results move to <Link to="/?tab=past" className="font-medium text-brand-700">Past quarters</Link> and {quarterName(next)} starts on {formatDate(next.from)} with every unit to inspect again.
+        </div>
+      </Card>
+
       {attention > 0 && (
         <>
           <Caption>Needs attention</Caption>
           <Card className="overflow-hidden">
             <div className="divide-y">
+              {closing && <Row to="/schedule" tone="amber" icon={<CalendarDays className="h-5 w-5" />}
+                title={`${quarterName(q)} closes in ${report.daysLeft} ${report.daysLeft === 1 ? 'day' : 'days'} with ${todo} ${todo === 1 ? 'unit' : 'units'} to go`} sub="Plan the remaining sites now" />}
               {reviewQueue.length > 0 && (
                 <Row to="/inspections" tone="blue" icon={<PenLine className="h-5 w-5" />}
                   title={`${reviewQueue.length} ${reviewQueue.length === 1 ? 'inspection is' : 'inspections are'} waiting for your approval`}
@@ -95,41 +162,63 @@ export function Dashboard() {
                   sub={`${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}, ${bById.get(a.buildingId)?.city} · ${a.statusReason ?? 'Out of service'}`} />
               ))}
               {outList.length > 4 && <Row to="/reports?view=oos" tone="red" icon={<ShieldAlert className="h-5 w-5" />} title={`${outList.length - 4} more out of service`} sub="See the full list" />}
-              {overdue > 0 && <Row to="/reports?view=due" tone="amber" icon={<ClipboardCheck className="h-5 w-5" />} title={`${overdue} ${overdue === 1 ? 'unit is' : 'units are'} overdue for inspection`} sub="Last inspected more than 90 days ago" />}
             </div>
           </Card>
         </>
       )}
 
-      {/* This quarter, by city */}
-      <Caption right={<Link to="/reports" className="text-[15px] font-medium text-brand-700">See report</Link>}>{quarter} · tap a city to see its sites</Caption>
+      <Caption right={<Link to="/schedule" className="text-[15px] font-medium text-brand-700">Schedule</Link>}>Coming up</Caption>
       <Card className="overflow-hidden">
-        <div className="px-4 pb-3 pt-4">
-          <div className="flex items-baseline justify-between gap-3">
-            <div className="text-[17px] font-semibold">{done} of {total} inspected</div>
-            <div className="text-[15px] tabular text-slate-500">{pct}%</div>
+        {upcoming.length === 0 ? (
+          <div className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-brand-500/[.1] text-brand-600"><CalendarPlus className="h-6 w-6" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[17px] font-semibold">No visits planned yet</div>
+              <div className="text-[15px] text-slate-500">Plan which site is inspected on which day, and who goes. Everyone sees it.</div>
+            </div>
+            <Link to="/schedule"><Button variant="primary" icon={<CalendarPlus className="h-4 w-4" />}>Plan visits</Button></Link>
           </div>
-          <div className="mt-2 flex h-2.5 overflow-hidden rounded-full bg-slate-200/80">
-            <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, done - outList.length) / Math.max(total, 1)) * 100}%` }} />
-            <span className="h-full bg-rose-500" style={{ width: `${(outList.length / Math.max(total, 1)) * 100}%` }} />
+        ) : (
+          <div className="divide-y">
+            {upcoming.slice(0, 4).map((v) => {
+              const b = bById.get(v.buildingId)!;
+              const n = left.get(b.id) ?? 0;
+              const contact = b.contacts?.find((c) => c.phone);
+              return (
+                <div key={v.id} className="flex items-center gap-3 px-4 py-3" data-upcoming={b.name}>
+                  <DateTile date={v.date} />
+                  <Link to={`/sites/${b.id}`} className="min-w-0 flex-1">
+                    <div className="truncate text-[17px] font-semibold tracking-[-0.01em]">{b.name} <span className="font-normal text-slate-500">· {b.city}</span></div>
+                    <div className="truncate text-[14px] text-slate-500">{dayLabel(v.date, today)} · {v.inspector || 'Inspector not decided'} · {n === 0 ? 'all done' : `${n} to inspect`}</div>
+                  </Link>
+                  {contact && <ContactActions contact={contact} callOnly />}
+                </div>
+              );
+            })}
+            {upcoming.length > 4 && <Row to="/schedule" tone="slate" icon={<CalendarDays className="h-5 w-5" />} title={`${upcoming.length - 4} more planned`} sub="See the whole schedule" />}
           </div>
-        </div>
-        <div className="divide-y border-t">
-          {(byCity ?? []).map((c) => (
-            <Link key={c.key} to={`/sites?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3">
+        )}
+      </Card>
+
+      <Caption right={<Link to="/reports" className="text-[15px] font-medium text-brand-700">See report</Link>}>{quarterName(q)} by city<span className="hidden sm:inline"> · tap a city to see its sites</span></Caption>
+      <Card className="overflow-hidden">
+        <div className="divide-y">
+          {byCity.map((c) => (
+            <Link key={c.key} to={`/sites?city=${encodeURIComponent(c.label)}`} data-city={c.label} className="row-press grid grid-cols-[minmax(0,6.5rem)_minmax(0,1fr)_auto_auto] items-center gap-3 py-3 pl-4 pr-3">
               <div className="truncate text-[16px] font-medium">{c.label}</div>
-              <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} inspected, ${c.outOfService} out of service`}>
-                <span className="h-full bg-emerald-500" style={{ width: `${(Math.max(0, c.inDate - c.outOfService) / Math.max(c.assets, 1)) * 100}%` }} />
-                <span className="h-full bg-rose-500" style={{ width: `${(c.outOfService / Math.max(c.assets, 1)) * 100}%` }} />
+              <div className="flex h-2 overflow-hidden rounded-full bg-slate-200/80" role="img" aria-label={`${c.inDate} of ${c.assets} done, ${c.doneFailed} of them failed`}>
+                <span className="h-full bg-emerald-500 transition-[width] duration-700 ease-out" style={{ width: `${((c.inDate - c.doneFailed) / Math.max(c.assets, 1)) * 100}%` }} />
+                <span className="h-full bg-rose-500" style={{ width: `${(c.doneFailed / Math.max(c.assets, 1)) * 100}%` }} />
               </div>
               <div className="text-right text-[14px] tabular text-slate-500">{c.inDate} of {c.assets}</div>
+              <ChevronRight className="h-4 w-4 text-slate-300" />
             </Link>
           ))}
         </div>
       </Card>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 px-1 text-[12px] text-slate-500">
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Inspected</span>
-        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Out of service</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-500" />Done for {quarterName(q)}</span>
+        <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-rose-500" />Failed, do not use</span>
         <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-slate-200" />Still to do</span>
       </div>
 
@@ -149,22 +238,108 @@ export function Dashboard() {
           </Card>
         </>
       )}
+    </>
+  );
+}
 
-      <Caption right={<Link to="/sites" className="text-[15px] font-medium text-brand-700">All sites</Link>}>Sites with the most left to do</Caption>
-      <Card className="overflow-hidden">
-        {sites.length === 0 ? <Empty title="Every site is up to date" /> : (
-          <div className="divide-y">
-            {sites.map(({ b, todo, oos, total: n }) => (
-              <Link key={b.id} to={`/sites/${b.id}`} className="row-press flex items-center gap-3 px-4 py-3.5">
-                <div className="min-w-0 flex-1"><div className="truncate text-[17px] font-semibold tracking-[-0.01em]">{b.name}</div><div className="text-[14px] text-slate-500">{b.city} · {todo} of {n} still to inspect</div></div>
-                {oos > 0 && <span className="rounded-full bg-rose-500/[.12] px-2.5 py-1 text-[12px] font-semibold text-rose-600">{oos} do not use</span>}
-                <ChevronRight className="h-5 w-5 text-slate-300" />
-              </Link>
-            ))}
-          </div>
-        )}
-      </Card>
+/** Work done against time gone: the bar fills with units done, the dark line is today. */
+function PaceBar({ q, today, done, failed, total }: { q: Quarter; today: string; done: number; failed: number; total: number }) {
+  const len = quarterLength(q);
+  const elapsed = quarterElapsed(q, today) * 100;
+  const months = [0, 1, 2].map((i) => `${q.from.slice(0, 5)}${String(Number(q.from.slice(5, 7)) + i).padStart(2, '0')}-01`);
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return (
+    <div className="mt-4" role="img" aria-label={`${done + failed} of ${total} done; ${Math.round(elapsed)}% of the quarter has gone`}>
+      <div className="relative pt-5">
+        <span className="absolute top-0 -translate-x-1/2 whitespace-nowrap text-[11px] font-bold uppercase tracking-[0.05em] text-slate-900" style={{ left: `${Math.min(Math.max(elapsed, 6), 94)}%` }}>Today</span>
+        <div className="flex h-3.5 overflow-hidden rounded-full bg-slate-200/80">
+          <span className="h-full bg-emerald-500 transition-[width] duration-700 ease-out" style={{ width: `${(done / Math.max(total, 1)) * 100}%` }} />
+          <span className="h-full bg-rose-500 transition-[width] duration-700 ease-out" style={{ width: `${(failed / Math.max(total, 1)) * 100}%` }} />
+        </div>
+        <span className="absolute bottom-[-4px] top-[16px] w-[2px] -translate-x-1/2 rounded-full bg-ink-950" style={{ left: `${elapsed}%` }} />
+      </div>
+      <div className="relative mt-2 h-4 text-[12px] font-medium text-slate-500">
+        {months.map((m) => <span key={m} className="absolute" style={{ left: `${(diffDays(m, q.from) / len) * 100}%` }}>{MON[Number(m.slice(5, 7)) - 1]} 1</span>)}
+        <span className="absolute right-0">{formatDate(q.to).slice(0, 6)}</span>
+      </div>
     </div>
+  );
+}
+
+function Kpi({ to, label, value, sub, tone }: { to: string; label: string; value: number; sub: string; tone: 'ink' | 'green' | 'red' | 'amber' | 'muted' }) {
+  return (
+    <Link to={to} data-kpi={label} className="group bg-white px-4 py-4 transition-colors duration-150 hover:bg-slate-50 active:bg-slate-100 sm:px-5">
+      <div className="flex items-center justify-between text-[13px] font-semibold text-slate-500">{label}<ChevronRight className="h-4 w-4 text-slate-300 transition-transform duration-150 group-hover:translate-x-0.5" /></div>
+      <div className={cx('mt-1.5 text-[30px] font-bold leading-none tracking-[-0.03em] tabular',
+        tone === 'green' ? 'text-emerald-600' : tone === 'red' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : tone === 'muted' ? 'text-slate-300' : 'text-slate-900')}>{value}</div>
+      <div className="mt-1.5 truncate text-[13px] text-slate-500">{sub}</div>
+    </Link>
+  );
+}
+
+// ---------- past quarters ----------
+
+function PastQuarters({ data, total, today }: { data: AllData; total: number; today: string }) {
+  const now = quarterOf(today);
+  const signed = data.inspections.filter((i) => (i.status === 'submitted' || i.status === 'finalized') && i.header.inspectionDate);
+  const first = signed.reduce<string | null>((m, i) => (!m || i.header.inspectionDate < m ? i.header.inspectionDate : m), null);
+  const quarters = pastQuarters(first, today).map((q) => {
+    const ins = signed.filter((i) => inQuarter(i.header.inspectionDate, q));
+    const units = new Set(ins.map((i) => i.assetId)).size;
+    return { q, units, inspections: ins.length, problems: ins.filter((i) => i.result.defectsIdentified).length };
+  });
+  const fyStart = shiftQuarter(now, -(now.n - 1));
+  const fy = [0, 1, 2, 3].map((i) => shiftQuarter(fyStart, i));
+
+  return (
+    <>
+      <Card className="p-5 sm:p-6">
+        <div className="text-[17px] font-semibold">{fyLabel(now)}</div>
+        <div className="mt-3 grid grid-cols-4 gap-1.5">
+          {fy.map((q) => {
+            const state = q.key === now.key ? 'now' : q.to < today ? 'past' : 'next';
+            const row = quarters.find((r) => r.q.key === q.key);
+            const body = (
+              <div className={cx('h-full rounded-[14px] px-2.5 py-2.5 sm:px-3.5',
+                state === 'now' ? 'bg-brand-600 text-white shadow-[0_8px_20px_-8px_rgb(13_143_122/0.7)]' : state === 'past' ? 'bg-black/[.05] text-slate-800' : 'bg-black/[.025] text-slate-400')}>
+                <div className="text-[17px] font-bold leading-tight">{quarterName(q)}</div>
+                <div className={cx('whitespace-nowrap text-[11.5px] font-medium sm:text-[12px]', state === 'now' ? 'text-white/80' : 'text-slate-500')}>{quarterLabel(q).split(' · ')[1].replace(/ \d{4}$/, '')}</div>
+                <div className={cx('mt-1 whitespace-nowrap text-[12px] font-semibold', state === 'now' ? 'text-white' : '')}>{state === 'now' ? 'Now' : state === 'past' ? (row ? `${row.units} done` : 'No data') : <><span className="sm:hidden">Next</span><span className="hidden sm:inline">Opens {formatDate(q.from).slice(0, 6)}</span></>}</div>
+              </div>
+            );
+            return row ? <Link key={q.key} to={`/reports?q=${q.key}`} className="transition active:scale-[.97]">{body}</Link> : <div key={q.key}>{body}</div>;
+          })}
+        </div>
+      </Card>
+
+      <Caption>Finished quarters</Caption>
+      {quarters.length === 0 ? (
+        <Card>
+          <Empty icon={<Archive className="h-6 w-6" />} title="No finished quarter yet">
+            {quarterName(now)} is the first quarter in Think Inspect. When it closes on {formatDate(now.to)}, its final numbers appear here and {quarterName(shiftQuarter(now, 1))} starts on {formatDate(shiftQuarter(now, 1).from)} with every unit to inspect again.
+          </Empty>
+        </Card>
+      ) : (
+        <Card className="divide-y overflow-hidden">
+          {quarters.map(({ q, units, inspections, problems }) => {
+            const pct = total ? Math.round((units / total) * 100) : 0;
+            return (
+              <Link key={q.key} to={`/reports?q=${q.key}`} data-past={q.key} className="row-press flex items-center gap-4 px-4 py-4 sm:px-5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-baseline gap-x-2"><span className="text-[17px] font-semibold">{quarterLabel(q)}</span><span className="text-[13px] text-slate-500">{fyLabel(q)} · final</span></div>
+                  <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-slate-200/80"><span className="h-full bg-emerald-500" style={{ width: `${pct}%` }} /></div>
+                  <div className="mt-1.5 text-[14px] text-slate-500">
+                    <span className="font-semibold text-slate-800">{units} of {total}</span> inspected ({pct}%) · {Math.max(0, total - units)} missed · {inspections} inspections
+                    {problems > 0 && <span className="font-semibold text-rose-600"> · {problems} with problems</span>}
+                  </div>
+                </div>
+                <ChevronRight className="h-5 w-5 shrink-0 text-slate-300" />
+              </Link>
+            );
+          })}
+        </Card>
+      )}
+    </>
   );
 }
 

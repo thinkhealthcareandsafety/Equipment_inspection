@@ -67,6 +67,13 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
         } else if (op.type === 'asset.update') {
           result = await db.assets.get(op.payload.id);
           audit('asset.update', 'asset', op.payload.patch);
+        } else if (op.type === 'visit.upsert') {
+          result = { ...op.payload, updatedAt: new Date().toISOString() };
+          audit(op.payload.status === 'cancelled' ? 'visit.cancel' : 'visit.plan', 'visit', { date: op.payload.date, inspector: op.payload.inspector });
+        } else if (op.type === 'building.contacts') {
+          const b = await db.buildings.get(op.payload.id);
+          result = b ? { ...b, contacts: op.payload.contacts } : { ok: true };
+          audit('site.contacts', 'building', { contacts: op.payload.contacts?.length ?? 0 });
         } else if (op.type === 'team.upsert') {
           audit(op.payload.active === false ? 'team.remove' : 'team.add', 'team_member', { name: op.payload.name, designation: op.payload.designation });
         } else if (op.type !== 'photo.put') {

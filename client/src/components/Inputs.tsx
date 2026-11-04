@@ -10,6 +10,7 @@ import { useTeam } from '../lib/hooks.ts';
 import { useSync } from '../lib/sync.ts';
 import { Button, cx, Field, Sheet, useToast } from './ui.tsx';
 import { useDialogs } from './Dialogs.tsx';
+import { Select } from './Pickers.tsx';
 
 export const DESIGNATIONS = ['Inspector', 'Senior Inspector', 'Trainer', 'Trainee Inspector', 'Reviewer'];
 
@@ -21,12 +22,13 @@ export function PersonPicker({ value, onChange, disabled, error }: { value: stri
   return (
     <>
       <div className="flex gap-2">
-        <select className={cx('input flex-1', error && 'input-error')} disabled={disabled} value={value} onChange={(e) => e.target.value === '__manage' ? setOpen(true) : onChange(e.target.value)}>
-          <option value="">Select inspector…</option>
-          {team.map((m) => <option key={m.id} value={m.name}>{m.name} — {m.designation}</option>)}
-          {value && !known && <option value={value}>{value}</option>}
-          {!disabled && <option value="__manage">＋ Someone else…</option>}
-        </select>
+        <Select className="flex-1" error={error} disabled={disabled} value={value} onChange={onChange} placeholder="Select inspector…" ariaLabel="Inspector"
+          options={[...team.map((m) => ({ value: m.name, label: m.name, hint: m.designation, text: m.name })), ...(value && !known ? [{ value, label: value, text: value }] : [])]}
+          footer={disabled ? undefined : (close) => (
+            <button type="button" onClick={() => { close(); setOpen(true); }} className="flex min-h-[44px] w-full items-center gap-3 rounded-[10px] px-3 text-left text-[16px] font-semibold text-brand-700 transition hover:bg-brand-500/[.08]">
+              <UserPlus className="h-[18px] w-[18px]" />Someone else…
+            </button>
+          )} />
         {!disabled && <Button type="button" variant="secondary" className="shrink-0 px-3" title="Choose or add a person" onClick={() => setOpen(true)}><UserPlus className="h-4 w-4" /></Button>}
       </div>
       <PickPersonSheet open={open} onClose={() => setOpen(false)} current={value} onPick={(n) => { onChange(n); setOpen(false); }} />
@@ -58,7 +60,7 @@ export function TeamSheet({ open, onClose, onPick, title = 'Inspection team' }: 
           <div className="mb-3 text-sm font-semibold">Add a person</div>
           <div className="grid gap-3 sm:grid-cols-[1fr_170px]">
             <input className="input" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-            <select className="input" value={designation} onChange={(e) => setDesignation(e.target.value)}>{DESIGNATIONS.map((d) => <option key={d}>{d}</option>)}</select>
+            <Select value={designation} onChange={setDesignation} ariaLabel="Designation" options={DESIGNATIONS.map((d) => ({ value: d, label: d, text: d }))} />
           </div>
           <Button variant="primary" className="mt-3 w-full" icon={<Plus className="h-4 w-4" />} disabled={!name.trim()} onClick={add}>Add {designation.toLowerCase()}</Button>
         </div>

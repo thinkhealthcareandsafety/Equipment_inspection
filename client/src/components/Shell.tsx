@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  Bell, Building2, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Search, Settings, Users,
+  Bell, Building2, CalendarDays, ChartColumn, ChevronRight, ClipboardCheck, Cloud, CloudOff, Ellipsis, LayoutDashboard, LifeBuoy, LogOut, RefreshCw, ScanLine, Search, Settings, Users,
 } from 'lucide-react';
 import { ScanSheet } from './ScanSheet.tsx';
 import { FindSheet } from './FindSheet.tsx';
@@ -47,6 +47,7 @@ export function Shell() {
   const nav: NavItem[] = [
     { to: '/', label: 'Home', icon: <LayoutDashboard className="h-5 w-5" />, show: true },
     { to: '/sites', label: 'Sites', icon: <Building2 className="h-5 w-5" />, show: true },
+    { to: '/schedule', label: 'Schedule', icon: <CalendarDays className="h-5 w-5" />, show: true },
     { to: '/reports', label: 'Reports', icon: <ChartColumn className="h-5 w-5" />, show: true },
     { to: '/inspections', label: 'Inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: can.review(user.role), badge: reviewCount },
     { to: '/inspections', label: 'My inspections', icon: <ClipboardCheck className="h-5 w-5" />, show: user.role === 'inspector', badge: myDrafts },
@@ -54,8 +55,8 @@ export function Shell() {
     { to: '/admin', label: 'Admin', icon: <Settings className="h-5 w-5" />, show: can.admin(user.role) },
     { to: '/help', label: 'How to use', icon: <LifeBuoy className="h-5 w-5" />, show: true },
   ].filter((n) => n.show);
-  // Phone tab bar: Home, Sites, a big Scan button, Reports, More. Everything else lives in More.
-  const primary = nav.filter((n) => ['Home', 'Sites', 'Reports'].includes(n.label));
+  // Phone tab bar: Home, Sites, a big Scan button, Schedule, More. Reports and the rest live in More (Home links to Reports too).
+  const primary = nav.filter((n) => ['Home', 'Sites', 'Schedule'].includes(n.label));
   const secondary = nav.filter((n) => !primary.includes(n));
   const moreBadge = secondary.reduce((s, n) => s + (n.badge ?? 0), 0);
 

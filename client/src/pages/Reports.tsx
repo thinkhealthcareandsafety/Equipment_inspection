@@ -4,19 +4,22 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { ArrowRight, Check, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, FileText, Layers, MapPin } from 'lucide-react';
-import { EQUIPMENT_LABELS, formatDate, relativeDue, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
+import { ArrowRight, Check, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, FileText, Layers, MapPin, X } from 'lucide-react';
+import { EQUIPMENT_LABELS, formatDate, fyLabel, quarterFromKey, quarterLabel, quarterName, quarterOf, shiftQuarter, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
 import { saveFile } from '../lib/files.ts';
-import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, cx, DueBadge, Empty, EquipmentAvatar, InspectionStatusBadge, SearchField, Segmented, Sheet, useToast } from '../components/ui.tsx';
+import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge, QuarterBadge, SearchField, Segmented, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
 
 type View = 'summary' | 'due' | 'oos' | 'defects' | 'done';
 const PERIODS: Period[] = ['quarter', 'last_quarter', 'year', 'all'];
-const PERIOD_SHORT: Record<Period, string> = { quarter: 'This quarter', last_quarter: 'Last quarter', year: 'This year', all: 'All time' };
-const PERIOD_TINY: Record<Period, string> = { quarter: 'This qtr', last_quarter: 'Last qtr', year: 'This year', all: 'All time' };
+const NOW = quarterOf();
+const PERIOD_SHORT: Record<Period, string> = {
+  quarter: `${quarterName(NOW)} · now`, last_quarter: `${quarterName(shiftQuarter(NOW, -1))} · last quarter`, year: fyLabel(NOW), all: 'All time',
+};
+const PERIOD_TINY: Record<Period, string> = { quarter: `${quarterName(NOW)} now`, last_quarter: quarterName(shiftQuarter(NOW, -1)), year: `FY ${String(NOW.fy).slice(2)}-${String((NOW.fy + 1) % 100).padStart(2, '0')}`, all: 'All time' };
 
 export function Reports() {
   const data = useAllData();
@@ -29,6 +32,7 @@ export function Reports() {
   const city = p('city'), buildingId = p('buildingId'), floorId = p('floorId');
   const type = p('type') as EquipmentType | '';
   const period = (p('period') || 'quarter') as Period;
+  const quarterKey = quarterFromKey(p('q')) ? p('q') : '';
   const view = (p('view') || 'summary') as View;
   const set = (patch: Record<string, string>) => {
     const n = new URLSearchParams(params);
@@ -37,7 +41,7 @@ export function Reports() {
   };
 
   const group: GroupBy = floorId ? 'equipmentType' : buildingId ? 'floor' : city ? 'building' : 'city';
-  const filters: ReportFilters = { ...EMPTY_FILTERS, city, buildingId, floorId, equipmentType: type, period };
+  const filters: ReportFilters = { ...EMPTY_FILTERS, city, buildingId, floorId, equipmentType: type, period, quarterKey: quarterKey || undefined };
   const report = useMemo(() => data && buildReport(data, filters, group), [data, params.toString()]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!data || !report) return <Skeleton />;
 
@@ -49,24 +53,30 @@ export function Reports() {
   const done = [...report.inspections].sort((a, b) => b.header.inspectionDate.localeCompare(a.header.inspectionDate));
   const oos = report.assets.filter((a) => a.status === 'out_of_service');
   const pctDone = k.assets ? Math.round((k.inDate / k.assets) * 100) : 0;
+  const qn = quarterName(report.quarter);
+  const closed = report.closed;
+  // A finished quarter from before anyone used the app has nothing to report: say so rather than "331 missed".
+  const noRecord = closed && report.inspections.length === 0;
+  const heading = periodLabel(period, todayISO(), quarterKey);
 
-  const fileBase = `${place.replace(/[^\w]+/g, '-')}_${period}_${todayISO()}`;
+  const fileBase = `${place.replace(/[^\w]+/g, '-')}_${quarterKey || period}_${todayISO()}`;
   const exportPdf = async () => {
     setBusy(true);
     try {
       await saveFile(`Inspection-report_${fileBase}.pdf`, summaryReport(report, {
         title: `Inspection Report — ${place}`, groupBy: group, generatedBy: user.name,
-        filters: [periodLabel(period), type ? EQUIPMENT_LABELS[type] : 'All equipment'],
+        filters: [heading, type ? EQUIPMENT_LABELS[type] : 'All equipment'],
       }).output('blob'));
     } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
   };
   const exportExcel = async () => {
     const site = (id: string) => `${bById.get(id)?.name ?? ''}, ${bById.get(id)?.city ?? ''}`;
     const rows: (string | number | null)[][] =
-      view === 'summary' ? [['Name', 'Context', 'Assets', 'Inspected this period', 'Pass rate %', 'In date %', 'Open defects', 'Out of service', 'Overdue', 'Due in 14 days', 'Never inspected'],
-        ...report.groups.map((g) => [g.label, g.sub, g.assets, g.inspected, g.passRate, g.compliance, g.openDefects, g.outOfService, g.overdue, g.dueSoon, g.never])]
-      : view === 'due' ? [['Asset', 'Type', 'Site', 'Floor', 'Last inspected', 'Next due', 'Status'],
-        ...report.toInspect.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], site(a.buildingId), a.floorId ? floorName(a.floorId) : '', a.lastInspectionDate, a.nextDueDate, relativeDue(a.nextDueDate)])]
+      view === 'summary' ? [['Name', 'Context', 'Assets', 'Inspected this period', 'Pass rate %', `Done in ${qn} %`, `Done in ${qn}`, closed ? `Missed in ${qn}` : 'Still to inspect', 'Open defects', 'Out of service', 'Never inspected'],
+        ...report.groups.map((g) => [g.label, g.sub, g.assets, g.inspected, g.passRate, g.compliance, g.inDate, g.todo, g.openDefects, g.outOfService, g.never])]
+      : view === 'due' ? [['Asset', 'Type', 'Make', 'Site', 'Floor', 'Last inspected', 'Status'],
+        ...report.toInspect.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], a.manufacturer ?? '', site(a.buildingId), a.floorId ? floorName(a.floorId) : '', a.lastInspectionDate,
+          closed ? `Missed in ${qn}` : a.status === 'out_of_service' ? 'Do not use' : `To do in ${qn}`])]
       : view === 'oos' ? [['Asset', 'Type', 'Site', 'Status', 'Reason'], ...oos.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], site(a.buildingId), ASSET_STATUS[a.status].label, a.statusReason])]
       : view === 'defects' ? [['Asset', 'Site', 'Check', 'Safety-critical', 'Remark', 'Corrective action', 'Raised'],
         ...report.defects.map((d) => [d.asset.assetTag, site(d.asset.buildingId), `${d.checkNo === 'TEST' ? 'Load test' : `#${d.checkNo}`} ${d.label}`, d.safetyCritical ? 'Yes' : 'No', d.remark, d.correctiveActionRef, d.raisedAt])]
@@ -81,7 +91,7 @@ export function Reports() {
 
   const tabs: { id: View; label: string; n?: number; tone?: string }[] = [
     { id: 'summary', label: group === 'city' ? 'By city' : group === 'building' ? 'By site' : group === 'floor' ? 'By floor' : 'By equipment' },
-    { id: 'due', label: 'Still to inspect', n: report.toInspect.length },
+    { id: 'due', label: closed ? `Missed in ${qn}` : 'Still to inspect', n: report.toInspect.length, tone: closed && report.toInspect.length ? 'text-rose-600' : '' },
     { id: 'oos', label: 'Do not use', n: oos.length, tone: oos.length ? 'text-rose-600' : '' },
     { id: 'defects', label: 'Problems found', n: report.defects.length, tone: report.defects.length ? 'text-rose-600' : '' },
     { id: 'done', label: 'Inspections done', n: done.length },
@@ -105,8 +115,8 @@ export function Reports() {
       {/* Title, scope in words, export */}
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <div className="text-[13px] font-semibold uppercase tracking-[0.05em] text-slate-500">{periodLabel(period)}</div>
           <h1 className="text-[32px] font-bold leading-[1.1] tracking-[-0.03em] sm:text-[34px]">Reports</h1>
+          <div data-report-period className="mt-1 text-[16px] font-semibold text-slate-700">{heading}{closed && <span className="ml-2 rounded-full bg-black/[.06] px-2 py-0.5 text-[12px] font-semibold text-slate-600">Closed · final</span>}</div>
           <div className="mt-1 flex flex-wrap items-center gap-1 text-[15px] text-slate-500">
             <button className={cx(city ? 'text-brand-700 hover:underline' : 'font-medium text-slate-700')} onClick={() => set({ city: '', buildingId: '', floorId: '' })}>All sites</button>
             {city && <><ChevronRight className="h-4 w-4 text-slate-300" /><button className={cx(buildingId ? 'text-brand-700 hover:underline' : 'font-medium text-slate-700')} onClick={() => set({ buildingId: '', floorId: '' })}>{city}</button></>}
@@ -131,9 +141,15 @@ export function Reports() {
           <PickerButton icon={<MapPin className="h-[18px] w-[18px]" />} label={place} active={!!city} onClick={() => setPicker('place')} />
           <PickerButton icon={<Layers className="h-[18px] w-[18px]" />} label={type ? EQUIPMENT_LABELS[type] : 'All equipment'} active={!!type} onClick={() => setPicker('type')} />
         </div>
-        <div className="lg:ml-auto lg:w-[420px]">
-          <Segmented value={period} onChange={(x) => set({ period: x === 'quarter' ? '' : x })}
-            options={PERIODS.map((x) => ({ value: x, label: <><span className="sm:hidden">{PERIOD_TINY[x]}</span><span className="hidden sm:inline">{PERIOD_SHORT[x]}</span></> }))} />
+        <div className="lg:ml-auto lg:w-[460px]">
+          {quarterKey ? (
+            <button type="button" onClick={() => set({ q: '' })} className="flex h-10 w-full items-center gap-2 rounded-[12px] bg-ink-950 px-3.5 text-[15px] font-semibold text-white transition active:scale-[.98]">
+              <span className="flex-1 truncate text-left">{quarterLabel(report.quarter)} · {fyLabel(report.quarter)}</span><X className="h-4 w-4 opacity-70" /><span className="text-[13px] font-medium opacity-70">Back to now</span>
+            </button>
+          ) : (
+            <Segmented value={period} onChange={(x) => set({ period: x === 'quarter' ? '' : x })}
+              options={PERIODS.map((x) => ({ value: x, label: <><span className="sm:hidden">{PERIOD_TINY[x]}</span><span className="hidden sm:inline">{PERIOD_SHORT[x]}</span></> }))} />
+          )}
         </div>
       </div>
 
@@ -149,25 +165,25 @@ export function Reports() {
               </svg>
               <div className="text-center">
                 <div className="text-[30px] font-bold leading-none tracking-[-0.03em] tabular">{ringPct}<span className="text-[17px] font-semibold text-slate-400">%</span></div>
-                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">in date</div>
+                <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500">done {qn}</div>
               </div>
             </div>
             <div className="min-w-0 md:hidden">
               <div className="text-[22px] font-bold leading-tight tracking-[-0.02em]">{k.inDate} of {k.assets}</div>
-              <div className="text-[15px] text-slate-500">units inspected</div>
+              <div className="text-[15px] text-slate-500">{closed ? `inspected in ${qn}` : `done for ${qn}`}</div>
             </div>
           </div>
           <div className="min-w-0">
             <p data-summary className="hidden text-[20px] font-semibold leading-snug tracking-[-0.015em] text-slate-900 md:block">
-              {k.inDate} of {k.assets} units inspected{type ? ` (${EQUIPMENT_LABELS[type]})` : ''}
+              {k.inDate} of {k.assets} units {closed ? `inspected in ${qn}` : `done for ${qn}`}{type ? ` (${EQUIPMENT_LABELS[type]})` : ''}
               <span className="font-normal text-slate-500"> · {place}</span>
             </p>
             <p className="mt-1 hidden text-[15px] text-slate-500 md:block">
               {oos.length > 0 ? <><span className="font-semibold text-rose-600">{oos.length} {oos.length === 1 ? 'unit' : 'units'} must not be used</span> until re-tested. </> : 'Every unit can be used. '}
-              {report.toInspect.length > 0 ? `${report.toInspect.length} still need inspecting.` : 'Nothing is waiting.'}
+              {report.toInspect.length === 0 ? `Every unit is done for ${qn}.` : noRecord ? `No inspections were recorded in Think Inspect for ${qn}.` : closed ? `${report.toInspect.length} were missed.` : `${report.toInspect.length} still to inspect, ${report.daysLeft} days left in ${qn}.`}
             </p>
             <div className="-mx-2 grid grid-cols-3 gap-1 border-t border-black/[.06] pt-3 md:mx-0 md:mt-4 md:-ml-4 md:border-0 md:pt-0">
-              {stat('due', 'Still to inspect', 'To inspect', report.toInspect.length, 'Never inspected, overdue or due soon', 'amber')}
+              {stat('due', closed ? 'Missed' : 'Still to inspect', closed ? 'Missed' : 'To inspect', report.toInspect.length, noRecord ? 'No inspections recorded' : closed ? `Not inspected in ${qn}` : `Not yet inspected in ${qn}`, closed && !noRecord ? 'red' : noRecord ? 'slate' : 'amber')}
               {stat('oos', 'Do not use', 'Do not use', oos.length, 'Out of service until re-tested', 'red')}
               {stat('defects', 'Problems', 'Problems', report.defects.length, report.defects.length ? `${k.safetyCritical} on safety checks` : 'None open', 'red')}
             </div>
@@ -215,7 +231,7 @@ export function Reports() {
           </div>
         ))}
 
-        {view === 'due' && <AssetList assets={report.toInspect} empty="Everything here is inspected and in date" right={(a) => <DueBadge nextDue={a.nextDueDate} />} sub={(a) => `${bById.get(a.buildingId)?.name}${a.floorId ? ` · ${floorName(a.floorId)}` : ''} · last ${formatDate(a.lastInspectionDate)}`} />}
+        {view === 'due' && <AssetList assets={report.toInspect} empty={`Every unit here is done for ${qn}`} right={(a) => closed ? <Badge tone="red">Missed</Badge> : <QuarterBadge asset={a} />} sub={(a) => `${bById.get(a.buildingId)?.name}${a.floorId ? ` · ${floorName(a.floorId)}` : ''} · ${a.lastInspectionDate ? `last ${formatDate(a.lastInspectionDate)}` : 'never inspected'}`} />}
         {view === 'oos' && <AssetList assets={oos} empty="Every unit can be used" right={(a) => <AssetStatusBadge status={a.status} />} sub={(a) => `${bById.get(a.buildingId)?.name} · ${a.statusReason ?? ''}`} />}
 
         {view === 'defects' && (report.defects.length === 0 ? <Empty title="No open problems" /> : (
@@ -233,7 +249,7 @@ export function Reports() {
           </ul>
         ))}
 
-        {view === 'done' && (done.length === 0 ? <Empty title={`No inspections ${PERIOD_SHORT[period].toLowerCase()}`} /> : (
+        {view === 'done' && (done.length === 0 ? <Empty title={`No inspections in ${quarterKey ? quarterLabel(report.quarter) : PERIOD_SHORT[period]}`} /> : (
           <ul className="divide-y divide-slate-100">
             {done.map((i) => {
               const f = i.checks.filter((c) => c.status === 'F').length, m = i.checks.filter((c) => c.status === 'M').length;
@@ -252,7 +268,7 @@ export function Reports() {
           </ul>
         ))}
       </Card>
-      <p className="mt-3 px-1 text-[13px] leading-relaxed text-slate-500">"In date" means inspected in the last 90 days. <strong>PDF report</strong> is the full report for {place} to send the client; <strong>Excel</strong> downloads the list on screen.</p>
+      <p className="mt-3 px-1 text-[13px] leading-relaxed text-slate-500">"Done" means inspected in {quarterLabel(report.quarter)}. Every unit is inspected once a quarter (Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar). <strong>PDF report</strong> is the full report for {place} to send the client; <strong>Excel</strong> downloads the list on screen.</p>
 
       <PlaceSheet open={picker === 'place'} onClose={() => setPicker(null)} data={data} city={city} buildingId={buildingId}
         onPick={(patch) => { set({ city: '', buildingId: '', floorId: '', ...patch }); setPicker(null); }} />

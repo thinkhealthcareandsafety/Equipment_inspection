@@ -7,7 +7,7 @@
  */
 import { jsPDF } from 'jspdf';
 import {
-  deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, FUNCTIONAL_TEST_LABELS, HEADER_FIELDS, ORG_NAME, RESULT_LABELS,
+  deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, quarterName, FUNCTIONAL_TEST_LABELS, HEADER_FIELDS, ORG_NAME, RESULT_LABELS,
   STATUS_LABELS, type Asset, type Building, type ChecklistTemplate, type Client, type EquipmentType, type Inspection, type Signature,
 } from '@think/shared';
 import type { Report } from './reports.ts';
@@ -412,15 +412,16 @@ export function summaryReport(r: Report, opts: { title: string; filters: string[
   doc.text(ft, MX, y); y += ft.length * 3.6 + 3;
 
   const k = r.kpis;
+  const qn = quarterName(r.quarter);
   const tiles: [string, string, [number, number, number]][] = [
     ['Assets in scope', String(k.assets), INK],
-    ['Round progress', k.inDate === 0 ? 'Not started' : `${k.inDate} of ${k.assets}`, k.overdue > 0 ? RED : k.inDate >= k.assets ? GREEN : INK],
+    [`Done in ${qn}`, `${k.inDate} of ${k.assets}`, k.assets && k.inDate >= k.assets ? GREEN : INK],
+    [r.closed ? `Missed in ${qn}` : `Still to do in ${qn}`, String(k.todo), k.todo ? (r.closed ? RED : AMBER) : GREEN],
+    [r.closed ? 'Quarter closed' : 'Days left in quarter', r.closed ? formatDate(r.quarter.to) : String(r.daysLeft), INK],
     ['Pass rate (period)', k.passRate == null ? '—' : `${k.passRate}%`, INK],
     ['Inspections (period)', String(k.inspections), INK],
     ['Open defects', String(k.openDefects), k.openDefects ? RED : GREEN],
     ['Out of service', String(k.outOfService), k.outOfService ? RED : GREEN],
-    ['Overdue', String(k.overdue), k.overdue ? RED : GREEN],
-    ['Due in 14 days', String(k.dueSoon), k.dueSoon ? AMBER : INK],
     ['Never inspected', String(k.never), k.never ? AMBER : INK],
     ['Incomplete records', String(k.incompleteData), MUTED],
   ];
@@ -435,20 +436,20 @@ export function summaryReport(r: Report, opts: { title: string; filters: string[
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK);
   doc.text(`Breakdown by ${GROUP_LABELS[opts.groupBy].toLowerCase()}`, MX, y); y += 3;
-  const nameW = 50;
+  const nameW = 58;
   y = table(doc, y, [
-    { title: GROUP_LABELS[opts.groupBy], w: nameW }, { title: 'Assets', w: 13, align: 'right' }, { title: 'Inspected', w: 15, align: 'right' },
-    { title: 'Pass rate', w: 15, align: 'right' }, { title: 'Defects', w: 14, align: 'right' }, { title: 'Out of svc', w: 15, align: 'right' },
-    { title: 'Overdue', w: 14, align: 'right' }, { title: 'Due 14d', w: 13, align: 'right' }, { title: 'Never', w: 12, align: 'right' },
-    { title: 'Round', w: CW - nameW - 111, align: 'right' },
+    { title: GROUP_LABELS[opts.groupBy], w: nameW }, { title: 'Assets', w: 14, align: 'right' }, { title: 'Inspected', w: 16, align: 'right' },
+    { title: 'Pass rate', w: 16, align: 'right' }, { title: 'Defects', w: 15, align: 'right' }, { title: 'Out of svc', w: 16, align: 'right' },
+    { title: r.closed ? 'Missed' : 'To do', w: 14, align: 'right' }, { title: 'Never', w: 13, align: 'right' },
+    { title: `Done ${qn}`, w: CW - nameW - 104, align: 'right' },
   ], [...r.groups.map((g) => [g.sub ? `${g.label} — ${g.sub}` : g.label, String(g.assets), String(g.inspected), g.passRate == null ? '—' : `${g.passRate}%`,
-    String(g.openDefects), String(g.outOfService), String(g.overdue), String(g.dueSoon), String(g.never), `${g.inDate}/${g.assets}`]),
+    String(g.openDefects), String(g.outOfService), String(g.todo), String(g.never), `${g.inDate}/${g.assets}`]),
   ['Total', String(k.assets), String(k.inspectedInPeriod), k.passRate == null ? '—' : `${k.passRate}%`, String(k.openDefects), String(k.outOfService),
-    String(k.overdue), String(k.dueSoon), String(k.never), `${k.inDate}/${k.assets}`]],
+    String(k.todo), String(k.never), `${k.inDate}/${k.assets}`]],
   { color: (ri, ci) => {
     const g = r.groups[ri];
     if (!g) return INK; // totals row
-    const v = ci === 4 ? g.openDefects : ci === 5 ? g.outOfService : ci === 6 ? g.overdue : 0;
+    const v = ci === 4 ? g.openDefects : ci === 5 ? g.outOfService : ci === 6 && r.closed ? g.todo : 0;
     return v > 0 ? RED : null;
   } });
 
@@ -464,13 +465,14 @@ export function summaryReport(r: Report, opts: { title: string; filters: string[
 
   y += 8;
   if (y > PAGE_H - 40) { doc.addPage(); y = 20; }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK); doc.text(`Assets overdue or due within 14 days (${r.due.length})`, MX, y); y += 3;
-  if (r.due.length) {
-    table(doc, y, [{ title: 'Asset', w: 34 }, { title: 'Type', w: 28 }, { title: 'Make', w: 46 }, { title: 'Last inspected', w: 26 }, { title: 'Next due', w: CW - 134 }],
-      r.due.slice(0, 400).map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], a.manufacturer ?? (a.candidateMakes.join(' / ') || 'Not recorded'),
-        formatDate(a.lastInspectionDate), formatDate(a.nextDueDate)]),
-      { color: (ri, ci) => (ci === 4 && (r.due[ri].nextDueDate ?? '') < new Date().toISOString().slice(0, 10) ? RED : null) });
-  } else { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTED); doc.text('Nothing due in the next 14 days.', MX, y + 5); }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11.5); doc.setTextColor(...INK);
+  doc.text(`${r.closed ? `Missed in ${qn}` : `Still to inspect in ${qn}`} (${r.toInspect.length})`, MX, y); y += 3;
+  if (r.toInspect.length) {
+    table(doc, y, [{ title: 'Asset', w: 34 }, { title: 'Type', w: 28 }, { title: 'Make', w: 50 }, { title: 'Last inspected', w: 26 }, { title: 'Status', w: CW - 138 }],
+      r.toInspect.slice(0, 400).map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], a.manufacturer ?? (a.candidateMakes.join(' / ') || 'Not recorded'),
+        formatDate(a.lastInspectionDate), a.status === 'out_of_service' ? 'Do not use' : a.status === 'retest_required' ? 'Re-test needed' : a.lastInspectionDate ? 'Due this quarter' : 'Never inspected']),
+      { color: (ri, ci) => (ci === 4 && r.toInspect[ri].status === 'out_of_service' ? RED : null) });
+  } else { doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(...MUTED); doc.text(`Every unit is done for ${qn}.`, MX, y + 5); }
 
   footer(doc, `${ORG_NAME} · ${opts.title}`);
   return doc;

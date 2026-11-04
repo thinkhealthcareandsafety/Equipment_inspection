@@ -21,6 +21,7 @@ import { Reports } from './pages/Reports.tsx';
 import { Team } from './pages/Team.tsx';
 import { Admin } from './pages/Admin.tsx';
 import { Help } from './pages/Help.tsx';
+import { Schedule } from './pages/Schedule.tsx';
 import type { Role } from '@think/shared';
 
 export function App() {
@@ -42,6 +43,7 @@ export function App() {
               <Route path="inspections/:inspectionId" element={<InspectionPage />} />
               <Route path="defects" element={<Navigate to="/reports?view=defects" replace />} />
               <Route path="reports" element={<Reports />} />
+              <Route path="schedule" element={<Schedule />} />
               <Route path="team" element={<Guard ok={can.team}><Team /></Guard>} />
               <Route path="admin" element={<Guard ok={can.admin}><Admin /></Guard>} />
               <Route path="help" element={<Help />} />

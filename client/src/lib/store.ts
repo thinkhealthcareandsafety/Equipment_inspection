@@ -1,8 +1,9 @@
 /** All writes go through here: local DB first, then the sync outbox. */
 import {
-  addDays, applyDerivedResult, assetAfterInspection, DEFAULT_TEMPLATES, dueState, emptyChecks, emptyFunctionalTest,
-  normalizeFunctionalTest, REVIEW_REQUIRED, todayISO, uuid,
-  type Asset, type ChecklistTemplate, type EquipmentType, type Inspection, type InspectionEvent, type Signature, type TeamMember, type User,
+  applyDerivedResult, assetAfterInspection, DEFAULT_TEMPLATES, emptyChecks, emptyFunctionalTest, lockMessage, needsInspection,
+  nextQuarterDue, normalizeFunctionalTest, quarterLock, REVIEW_REQUIRED, todayISO, uuid,
+  type Asset, type Building, type ChecklistTemplate, type EquipmentType, type Inspection, type InspectionEvent, type Signature, type SiteContact,
+  type TeamMember, type User, type Visit,
 } from '@think/shared';
 import { db } from './db.ts';
 import { enqueue } from './sync.ts';
@@ -21,6 +22,9 @@ async function technicianName(user: User): Promise<string> {
 }
 
 export async function createInspection(asset: Asset, user: User, opts: { kind?: 'routine' | 'retest'; retestOf?: string | null } = {}): Promise<string> {
+  // One inspection per unit per quarter (a failed unit can always be re-tested after repair).
+  const lock = quarterLock(asset);
+  if (lock && opts.kind !== 'retest') throw new Error(lockMessage(asset.assetTag, lock));
   const t = await templateFor(asset.equipmentType);
   const [building, client, floor, location_] = await Promise.all([
     db.buildings.get(asset.buildingId), db.clients.get(asset.clientId),
@@ -53,7 +57,7 @@ export async function createInspection(asset: Asset, user: User, opts: { kind?: 
       serialNumber: asset.serialNumber ?? '',
       installDate: asset.installDate ?? '',
       previousMaintenanceDate: asset.lastInspectionDate ?? asset.previousMaintenanceDate ?? '',
-      nextDueDate: addDays(today, t.intervalDays),
+      nextDueDate: nextQuarterDue(today),
       inspectionPerformedBy: tech,
     },
     checks: emptyChecks(t),
@@ -200,12 +204,38 @@ export async function openOrCreateInspection(asset: Asset, user: User): Promise<
   return createInspection(asset, user, needsRetest ? { kind: 'retest', retestOf: asset.lastInspectionId } : {});
 }
 
-/** The next unit on the same floor that still needs inspecting this cycle, so inspectors can work a floor without going back to the list. */
+/** The next unit on the same floor that still needs inspecting this quarter, so inspectors can work a floor without going back to the list. */
 export async function nextDueOnFloor(current: Asset): Promise<Asset | null> {
   const all = await db.assets.where('buildingId').equals(current.buildingId).toArray();
-  const due = all.filter((a) => a.id !== current.id && a.status !== 'removed' && dueState(a.nextDueDate) !== 'ok');
+  const due = all.filter((a) => a.id !== current.id && needsInspection(a));
   const sameFloor = due.filter((a) => (a.floorId ?? null) === (current.floorId ?? null));
   // Units whose floor is not recorded yet still need inspecting, so they follow once this floor is done.
   const pool = sameFloor.length ? sameFloor : due.filter((a) => !a.floorId);
   return pool.sort((a, b) => a.assetTag.localeCompare(b.assetTag, undefined, { numeric: true }))[0] ?? null;
+}
+
+/** Plans (or re-plans) a visit to a site. Everyone sees it after the next sync. */
+export async function saveVisit(v: Pick<Visit, 'buildingId' | 'clientId' | 'date' | 'inspector' | 'note'> & { id?: string }, user: User): Promise<Visit> {
+  const prev = v.id ? await db.visits.get(v.id) : undefined;
+  const doc: Visit = {
+    id: v.id ?? uuid(), clientId: v.clientId, buildingId: v.buildingId, date: v.date, inspector: v.inspector.trim(), note: v.note.trim(),
+    status: 'planned', createdBy: prev?.createdBy ?? user.id, createdByName: prev?.createdByName ?? user.name, updatedAt: new Date().toISOString(),
+  };
+  await db.visits.put(doc);
+  await enqueue({ type: 'visit.upsert', entityId: doc.id, payload: doc }, true);
+  return doc;
+}
+
+export async function cancelVisit(v: Visit) {
+  const doc: Visit = { ...v, status: 'cancelled', updatedAt: new Date().toISOString() };
+  await db.visits.put(doc);
+  await enqueue({ type: 'visit.upsert', entityId: doc.id, payload: doc }, true);
+}
+
+/** Replaces the site's contact list (name, phone, role). */
+export async function saveSiteContacts(building: Building, contacts: SiteContact[]) {
+  const clean = contacts.map((c) => ({ id: c.id || uuid(), name: c.name.trim(), phone: c.phone.trim(), role: c.role.trim(), ...(c.email?.trim() ? { email: c.email.trim() } : {}) }))
+    .filter((c) => c.name);
+  await db.buildings.update(building.id, { contacts: clean });
+  await enqueue({ type: 'building.contacts', entityId: building.id, payload: { id: building.id, contacts: clean } }, true);
 }

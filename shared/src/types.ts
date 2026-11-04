@@ -71,9 +71,36 @@ export const DATA_FLAG_LABELS: Record<DataFlag, string> = {
 
 export interface Client { id: string; name: string; code: string; seq?: number }
 
+/** The client's person to call at a site (facility manager, coordinator, security desk). */
+export interface SiteContact {
+  id: string;
+  name: string;
+  phone: string;
+  role: string;
+  email?: string;
+}
+
 export interface Building {
   id: string; clientId: string; name: string; city: string; code: string;
-  address?: string | null; notes?: string | null; seq?: number;
+  address?: string | null; notes?: string | null;
+  /** Missing on rows downloaded before contacts existed; treat as []. */
+  contacts?: SiteContact[];
+  seq?: number;
+}
+
+/** A planned visit to a site to inspect its units. "Done" is derived from the units, not stored. */
+export interface Visit {
+  id: string;
+  clientId: string;
+  buildingId: string;
+  date: string; // YYYY-MM-DD
+  inspector: string; // team member's name, '' when not decided yet
+  note: string;
+  status: 'planned' | 'cancelled';
+  createdBy: string;
+  createdByName: string;
+  updatedAt: string;
+  seq?: number;
 }
 
 export interface Floor { id: string; buildingId: string; clientId: string; name: string; sortOrder: number; seq?: number }

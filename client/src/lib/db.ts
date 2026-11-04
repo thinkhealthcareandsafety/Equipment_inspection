@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
-  Asset, Building, ChecklistTemplate, Client, Floor, Inspection, Location, PhotoMeta, TeamMember,
+  Asset, Building, ChecklistTemplate, Client, Floor, Inspection, Location, PhotoMeta, TeamMember, Visit,
 } from '@think/shared';
 
 export interface LocalPhoto extends PhotoMeta {
@@ -11,7 +11,7 @@ export interface LocalPhoto extends PhotoMeta {
 export interface OutboxOp {
   seq?: number;
   opId: string;
-  type: 'inspection.upsert' | 'photo.put' | 'asset.update' | 'floor.upsert' | 'location.upsert' | 'team.upsert';
+  type: 'inspection.upsert' | 'photo.put' | 'asset.update' | 'floor.upsert' | 'location.upsert' | 'team.upsert' | 'visit.upsert' | 'building.contacts';
   entityId: string;
   payload: unknown;
   clientAt: string;
@@ -36,6 +36,7 @@ export const db = new Dexie('think-inspect') as Dexie & {
   templates: EntityTable<ChecklistTemplate & { active?: boolean }, 'id'>;
   team: EntityTable<TeamMember, 'id'>;
   notifications: EntityTable<Notice, 'id'>;
+  visits: EntityTable<Visit, 'id'>;
   outbox: EntityTable<OutboxOp, 'seq'>;
   meta: EntityTable<Meta, 'key'>;
 };
@@ -54,6 +55,8 @@ db.version(1).stores({
   outbox: '++seq, opId, entityId, type, state',
   meta: 'key',
 });
+// v2: planned site visits (the quarter's schedule). Existing tables and data are kept as they are.
+db.version(2).stores({ visits: 'id, buildingId, date' });
 
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
   return ((await db.meta.get(key))?.value as T) ?? fallback;

@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addDays, assetAfterInspection, blocking, DEFAULT_TEMPLATES, deriveResult, emptyChecks, emptyFunctionalTest, functionalTestGate,
-  normalizeFunctionalTest, validateInspection, type Asset, type CheckStatus, type Inspection,
+  addDays, assetAfterInspection, blocking, dayLabel, daysLeftIn, DEFAULT_TEMPLATES, deriveResult, emptyChecks, emptyFunctionalTest, functionalTestGate,
+  fyLabel, lockMessage, needsInspection, nextDueFrom, normalizeFunctionalTest, pastQuarters, quarterFromKey, quarterLabel, quarterLock, quarterOf,
+  shiftQuarter, unitQuarterState, validateInspection, type Asset, type CheckStatus, type Inspection,
 } from './index.ts';
 
 const t = DEFAULT_TEMPLATES.wheelchair;
@@ -22,9 +23,47 @@ function make(statuses: Partial<Record<number, CheckStatus>>, remarks: Record<nu
   };
 }
 
-test('quarterly: next due is inspection date + 90 days for every checklist', () => {
-  for (const tpl of Object.values(DEFAULT_TEMPLATES)) assert.equal(tpl.intervalDays, 90);
-  assert.equal(addDays('2026-10-30', 90), '2027-01-28');
+test('quarters follow the Indian financial year (Q3 = Oct-Dec)', () => {
+  const q = quarterOf('2026-11-04');
+  assert.deepEqual([q.key, q.n, q.from, q.to], ['2026-Q3', 3, '2026-10-01', '2026-12-31']);
+  assert.equal(quarterLabel(q), 'Q3 · Oct–Dec 2026');
+  assert.equal(fyLabel(q), 'FY 2026-27');
+  const q4 = shiftQuarter(q, 1);
+  assert.deepEqual([q4.key, q4.from, q4.to], ['2026-Q4', '2027-01-01', '2027-03-31']);
+  assert.deepEqual([quarterOf('2027-03-31').key, quarterOf('2027-04-01').key], ['2026-Q4', '2027-Q1']);
+  assert.equal(shiftQuarter(quarterOf('2026-04-10'), -1).key, '2025-Q4');
+  assert.equal(quarterFromKey('2026-Q2')!.from, '2026-07-01');
+  assert.equal(daysLeftIn(q, '2026-12-31'), 1);
+});
+
+test('quarterly: next due is the last day of the next quarter for every checklist', () => {
+  for (const tpl of Object.values(DEFAULT_TEMPLATES)) assert.equal(nextDueFrom('2026-11-04', tpl), '2027-03-31');
+  assert.equal(nextDueFrom('2026-12-31'), '2027-03-31');
+  assert.equal(nextDueFrom('2027-01-01'), '2027-06-30');
+});
+
+test('one inspection per unit per quarter; failed units can always be re-tested', () => {
+  const done = { lastInspectionDate: '2026-11-04', status: 'in_service' as const };
+  const lock = quarterLock(done, '2026-11-20')!;
+  assert.equal(lock.opens.from, '2027-01-01');
+  assert.match(lockMessage('JLL-BB-WC-001', lock), /done for Q3 .* Q4 inspection opens on 01 Jan 2027/);
+  assert.equal(quarterLock(done, '2027-01-01'), null, 'Q4 opens on 1 Jan');
+  assert.equal(quarterLock({ ...done, status: 'out_of_service' }, '2026-11-20'), null);
+  assert.equal(quarterLock({ ...done, status: 'retest_required' }, '2026-11-20'), null);
+  assert.equal(quarterLock({ lastInspectionDate: '2026-09-30', status: 'in_service' }, '2026-11-20'), null, 'done in Q2 is due in Q3');
+  assert.equal(quarterLock({ lastInspectionDate: null, status: 'in_service' }, '2026-11-20'), null);
+  assert.equal(unitQuarterState(done, '2026-11-20'), 'done');
+  assert.equal(unitQuarterState({ lastInspectionDate: null }, '2026-11-20'), 'todo');
+  assert.equal(unitQuarterState({ lastInspectionDate: null }, '2026-12-20'), 'closing');
+  assert.equal(needsInspection({ lastInspectionDate: null, status: 'removed' }, '2026-11-20'), false);
+});
+
+test('past quarters run from the first inspection to last quarter, newest first', () => {
+  assert.deepEqual(pastQuarters('2026-11-04', '2026-11-20').map((q) => q.key), []);
+  assert.deepEqual(pastQuarters('2026-11-04', '2027-01-02').map((q) => q.key), ['2026-Q3']);
+  assert.deepEqual(pastQuarters('2026-05-01', '2027-01-02').map((q) => q.key), ['2026-Q3', '2026-Q2', '2026-Q1']);
+  assert.equal(dayLabel('2026-11-12', '2026-11-04'), 'Thu 12 Nov');
+  assert.equal(dayLabel('2026-11-05', '2026-11-04'), 'Tomorrow');
 });
 
 test('Fail and Maintenance and Rectified need a remark', () => {

@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import type { Inspection } from '@think/shared';
+import { isISODate, uuid, type Inspection, type SiteContact } from '@think/shared';
 import { audit, getDb, type Queryable } from '../db.ts';
 import { isStaff, requireAuth, scope, type AuthUser } from '../lib/auth.ts';
-import { toAsset, toBuilding, toClient, toFloor, toInspection, toLocation, toTeam } from '../lib/mappers.ts';
+import { toAsset, toBuilding, toClient, toFloor, toInspection, toLocation, toTeam, toVisit } from '../lib/mappers.ts';
 import { OpError, upsertInspection } from '../services/inspections.ts';
 
 export const sync = Router();
@@ -33,6 +33,7 @@ sync.get('/pull', async (req, res) => {
        UNION ALL SELECT seq FROM assets WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM inspections WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM photos WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM visits WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM templates WHERE seq > $1
        UNION ALL SELECT seq FROM team_members WHERE seq > $1
        UNION ALL SELECT seq FROM notifications WHERE seq > $1 ${cid ? 'AND (client_id IS NULL OR client_id = $3)' : ''}
@@ -44,7 +45,7 @@ sync.get('/pull', async (req, res) => {
   const sel = (table: string, scoped = true) =>
     db.query(`SELECT * FROM ${table} WHERE seq > $1 AND seq <= $2 ${scoped ? `AND ${s.sql}` : ''} ORDER BY seq`, [since, upTo, ...(scoped ? s.params : [])]);
   const cs = u.role === 'client_admin' ? { sql: 'id = $3', params: [u.clientId] } : { sql: 'true', params: [] };
-  const [clients, buildings, floors, locations, assets, inspections, photos, templates, team, notifications] = await Promise.all([
+  const [clients, buildings, floors, locations, assets, inspections, photos, templates, team, notifications, visits] = await Promise.all([
     db.query(`SELECT * FROM clients WHERE seq > $1 AND seq <= $2 AND ${cs.sql}`, [since, upTo, ...cs.params]),
     sel('buildings'), sel('floors'), sel('locations'), sel('assets'), sel('inspections'),
     db.query(`SELECT id, inspection_id, client_id, check_no, mime, caption, created_by, created_at, seq FROM photos
@@ -52,6 +53,7 @@ sync.get('/pull', async (req, res) => {
     sel('templates', false),
     isStaff(u) ? sel('team_members', false) : Promise.resolve({ rows: [] }),
     db.query(`SELECT * FROM notifications WHERE seq > $1 AND seq <= $2 AND (client_id IS NULL OR ${s.sql}) ORDER BY seq`, [since, upTo, ...s.params]),
+    sel('visits'),
   ]);
   res.json({
     cursor: upTo,
@@ -67,6 +69,7 @@ sync.get('/pull', async (req, res) => {
       createdBy: r.created_by, createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at })),
     templates: templates.rows.map((r: any) => ({ ...r.definition, active: r.active })),
     team: team.rows.map(toTeam),
+    visits: visits.rows.map(toVisit),
     notifications: notifications.rows.map((r: any) => ({ id: r.id, clientId: r.client_id, assetId: r.asset_id, kind: r.kind, title: r.title,
       body: r.body, createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at })),
   });
@@ -74,7 +77,7 @@ sync.get('/pull', async (req, res) => {
 
 const Op = z.object({
   opId: z.string().min(8),
-  type: z.enum(['inspection.upsert', 'photo.put', 'asset.update', 'floor.upsert', 'location.upsert', 'team.upsert']),
+  type: z.enum(['inspection.upsert', 'photo.put', 'asset.update', 'floor.upsert', 'location.upsert', 'team.upsert', 'visit.upsert', 'building.contacts']),
   clientAt: z.string().optional(),
   offline: z.boolean().optional(),
   payload: z.any(),
@@ -192,6 +195,38 @@ async function apply(q: Queryable, u: AuthUser, type: string, p: any, meta: Meta
         entityId: p.id, changes: { name, designation: p.designation, before: prev ? toTeam(prev) : null }, ...meta });
       return { id: p.id };
     }
+
+    case 'visit.upsert': {
+      const b = (await q.query<{ client_id: string }>('SELECT client_id FROM buildings WHERE id = $1', [p.buildingId])).rows[0];
+      if (!b) throw new OpError('not_found', 'Site not found');
+      if (!isISODate(p.date)) throw new OpError('invalid', 'Pick a date for the visit');
+      const status = p.status === 'cancelled' ? 'cancelled' : 'planned';
+      const prev = (await q.query<Record<string, any>>(`SELECT * FROM visits WHERE id = $1`, [p.id])).rows[0];
+      await q.query(`INSERT INTO visits (id, client_id, building_id, visit_date, inspector, note, status, created_by, created_by_name)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (id) DO UPDATE SET visit_date=$4, inspector=$5, note=$6, status=$7, updated_at=now(), seq=nextval('change_seq')`,
+        [p.id, b.client_id, p.buildingId, p.date, clip(p.inspector, 80), clip(p.note, 500), status, u.id, clip(p.createdByName || u.name, 80)]);
+      await audit(q, { user: u, action: !prev ? 'visit.plan' : status === 'cancelled' ? 'visit.cancel' : 'visit.update', entityType: 'visit',
+        entityId: p.id, clientId: b.client_id, changes: { site: p.buildingId, date: p.date, inspector: p.inspector, before: prev ? toVisit(prev) : null }, ...meta });
+      return toVisit((await q.query('SELECT * FROM visits WHERE id = $1', [p.id])).rows[0]);
+    }
+
+    case 'building.contacts': {
+      const row = (await q.query<Record<string, any>>('SELECT * FROM buildings WHERE id = $1 FOR UPDATE', [p.id])).rows[0];
+      if (!row) throw new OpError('not_found', 'Site not found');
+      if (!Array.isArray(p.contacts) || p.contacts.length > 20) throw new OpError('invalid', 'Contacts must be a list of up to 20 people');
+      const contacts: SiteContact[] = p.contacts.map((c: any) => ({
+        id: typeof c?.id === 'string' && c.id ? c.id : uuid(), name: clip(c?.name, 80), phone: clip(c?.phone, 30), role: clip(c?.role, 60),
+        ...(c?.email ? { email: clip(c.email, 120) } : {}),
+      }));
+      if (contacts.some((c) => !c.name)) throw new OpError('invalid', 'Every contact needs a name');
+      await q.query(`UPDATE buildings SET contacts = $2, seq = nextval('change_seq') WHERE id = $1`, [p.id, JSON.stringify(contacts)]);
+      await audit(q, { user: u, action: 'site.contacts', entityType: 'building', entityId: p.id, clientId: row.client_id,
+        changes: { before: row.contacts ?? [], after: contacts }, ...meta });
+      return toBuilding((await q.query('SELECT * FROM buildings WHERE id = $1', [p.id])).rows[0]);
+    }
   }
   throw new OpError('invalid', `Unknown operation ${type}`);
 }
+
+const clip = (v: unknown, max: number) => String(v ?? '').trim().slice(0, max);

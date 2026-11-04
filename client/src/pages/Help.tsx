@@ -5,13 +5,16 @@
  */
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Cloud, Ellipsis, FileText, PenLine, Printer, ScanLine, ShieldAlert } from 'lucide-react';
+import { CalendarDays, Cloud, Ellipsis, FileText, Phone, PenLine, Printer, ScanLine, ShieldAlert } from 'lucide-react';
+import { formatDate, quarterLabel, quarterName, quarterOf, shiftQuarter } from '@think/shared';
 import { Card, cx, PageHeader } from '../components/ui.tsx';
 
 const SECTIONS = [
   { id: 'inspect', label: 'Inspect a unit' },
   { id: 'buttons', label: 'The buttons' },
   { id: 'fails', label: 'When something fails' },
+  { id: 'quarters', label: 'Quarters' },
+  { id: 'plan', label: 'Schedule & contacts' },
   { id: 'qr', label: 'QR labels' },
   { id: 'offline', label: 'No signal' },
   { id: 'manager', label: 'For the manager' },
@@ -56,10 +59,13 @@ const BUTTONS: { code: string; word: string; cls: string; when: string; note?: s
   { code: '', word: 'Fixed now', cls: 'bg-amber-500 text-white', when: 'Under More. It was wrong and you fixed it on the spot.', note: 'Write what you did.' },
 ];
 
+const NOW = quarterOf();
+const NEXT = shiftQuarter(NOW, 1);
+
 export function Help() {
   return (
     <div className="mx-auto max-w-3xl pb-10">
-      <PageHeader eyebrow="Think Inspect" title="How to use" subtitle="Replaces the paper checklists and the Master Inspection & Fitness Certificate for wheelchairs, scoop stretchers and foldable stretchers." />
+      <PageHeader title="How to use" subtitle="Replaces the paper checklists and the Master Inspection & Fitness Certificate for wheelchairs, scoop stretchers and foldable stretchers." />
 
       <nav aria-label="On this page" className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         {SECTIONS.map((s) => (
@@ -132,6 +138,23 @@ export function Help() {
         </Card>
       </Section>
 
+      <Section id="quarters" title="One inspection per unit, every quarter">
+        <Card className="space-y-3 p-4 text-[15px] leading-relaxed text-slate-700 sm:p-5">
+          <p>Quarters follow the financial year: <strong>Q1</strong> Apr–Jun, <strong>Q2</strong> Jul–Sep, <strong>Q3</strong> Oct–Dec, <strong>Q4</strong> Jan–Mar. Right now it is <strong>{quarterLabel(NOW)}</strong>.</p>
+          <p>Each unit is inspected <strong>once</strong> in a quarter. After it is signed, the unit shows <span className="font-semibold text-emerald-700">Done for {quarterName(NOW)}</span> and cannot be inspected again until <strong>{quarterName(NEXT)}</strong> opens on <strong>{formatDate(NEXT.from)}</strong>.</p>
+          <p><strong>Exception:</strong> a unit that failed can always be re-tested after it is repaired.</p>
+          <p>Nothing needs closing by hand. On the first day of a new quarter every unit is "to do" again, and the finished quarter's numbers move to <strong>Past quarters</strong> on Home, where its full report and PDF stay available.</p>
+        </Card>
+      </Section>
+
+      <Section id="plan" title="Schedule visits and site contacts">
+        <Card className="space-y-3 p-4 text-[15px] leading-relaxed text-slate-700 sm:p-5">
+          <p><CalendarDays className="mr-1 inline h-4 w-4 -translate-y-px text-brand-600" /><strong>Plan a visit:</strong> in <strong>Sites</strong> tap <strong>Plan</strong> next to a site (or open the site and tap <strong>Plan a visit</strong>). Pick the day and who goes, and add a note if needed. Everyone sees it.</p>
+          <p><strong>Schedule</strong> (in the menu) shows every planned visit by week, and lists the sites with work left that have no visit yet, so nothing is forgotten. Home shows what is coming up.</p>
+          <p><Phone className="mr-1 inline h-4 w-4 -translate-y-px text-emerald-600" /><strong>Site contact:</strong> open a site and tap <strong>Add site contact</strong>: the client's person to call on arrival (name, phone, role). Then one tap calls them or opens WhatsApp.</p>
+        </Card>
+      </Section>
+
       <Section id="qr" title="QR labels">
         <Card className="space-y-3 p-4 text-[15px] leading-relaxed text-slate-700 sm:p-5">
           <p className="rounded-2xl bg-brand-500/[.08] p-3 text-slate-800">The units do not have QR labels yet. You print them from the app once and stick one on each unit. Until then, open units from <strong>Sites</strong> or the search on Home; nothing else changes.</p>
@@ -153,7 +176,7 @@ export function Help() {
       <Section id="manager" title="For the manager">
         <Card className="overflow-hidden">
           <ul className="divide-y divide-slate-100 text-[15px] leading-relaxed text-slate-700">
-            <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Home</strong> shows the whole quarter at a glance: how many units are done, how many still to inspect, what is out of service and open defects. Below are the round by city, today's inspections by person and the sites with the most work left. Tap any number to see the list behind it.</li>
+            <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Home</strong> shows the quarter at a glance: units done, still to inspect, do not use, problems, sites finished and visits planned, plus whether the team is on pace to finish before the quarter closes. Below are what needs attention, the coming visits, progress by city and today's inspections by person. Tap any number to see the list behind it. <strong className='text-slate-900'>Past quarters</strong> keeps every finished quarter's final numbers.</li>
             <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Inspections</strong> lists everything done. No approval is needed: an inspection is final as soon as the inspector signs it, and its certificate is ready straight away.</li>
             <li className="px-4 py-4 sm:px-5"><strong className="text-slate-900">Reports:</strong> choose a city or site, the period and the equipment type. <strong>PDF</strong> gives a report you can send the client; <strong>Excel</strong> gives the list for the office.</li>
             <li className="px-4 py-4 sm:px-5"><FileText className="mr-1 inline h-4 w-4 -translate-y-px text-slate-500" /><strong className="text-slate-900">Certificates:</strong> open any submitted inspection, tap <strong>⋯</strong> at the top, then <strong>Certificate PDF</strong>. It uses the same layout and wording as the paper form.</li>
@@ -166,7 +189,8 @@ export function Help() {
           <dl className="divide-y divide-slate-100 text-[15px] leading-relaxed">
             {[
               ['Where do the numbers come from?', 'The 331 units are from the inventory sheet "FLS Equipment - INDIA.xlsx" (22 sites, 7 cities). Every submitted inspection updates the numbers for everyone.'],
-              ['What does "in date" mean?', 'The unit was inspected in the last 90 days. Each unit is due again 90 days after its last inspection.'],
+              ['What does "done" mean?', 'The unit was inspected and signed in this quarter. Each unit is inspected once a quarter (Q1 Apr–Jun, Q2 Jul–Sep, Q3 Oct–Dec, Q4 Jan–Mar).'],
+              ['Why can I not inspect a unit again?', 'It is already done for this quarter. Its next inspection opens on the first day of the next quarter. A failed unit can always be re-tested.'],
               ['What is the password?', 'The shared access code your office gave you. An administrator can change it.'],
               ['The app shows the wrong person.', 'Tap your name at the bottom of the menu (on a phone: More) and choose yourself. Your name goes on the certificate.'],
               ['A serial number, make or floor is wrong or missing.', 'Open the unit and tap Edit. Every change is recorded with your name and the time.'],

@@ -1,17 +1,19 @@
 import { saveFile } from './files.ts';
 import {
-  diffDays, dueState, EQUIPMENT_LABELS, todayISO,
-  type Asset, type AssetStatus, type Building, type Client, type DueState, type EquipmentType, type Floor, type Inspection, type OpenDefect,
+  daysLeftIn, EQUIPMENT_LABELS, fyLabel, inQuarter, quarterFromKey, quarterLabel, quarterOf, shiftQuarter, todayISO, CLOSING_DAYS,
+  type Asset, type AssetStatus, type Building, type Client, type EquipmentType, type Floor, type Inspection, type OpenDefect, type Quarter,
 } from '@think/shared';
 
 export interface ReportFilters {
   clientId: string; city: string; buildingId: string; floorId: string;
-  equipmentType: EquipmentType | ''; status: AssetStatus | ''; due: DueState | '';
-  period: Period; from: string; to: string;
+  equipmentType: EquipmentType | ''; status: AssetStatus | '';
+  period: Period;
+  /** A specific past quarter, e.g. "2026-Q2" (from Home's Past quarters). Overrides `period`. */
+  quarterKey?: string;
 }
 
 export const EMPTY_FILTERS: ReportFilters = {
-  clientId: '', city: '', buildingId: '', floorId: '', equipmentType: '', status: '', due: '', period: 'quarter', from: '', to: '',
+  clientId: '', city: '', buildingId: '', floorId: '', equipmentType: '', status: '', period: 'quarter',
 };
 
 export type GroupBy = 'city' | 'building' | 'floor' | 'equipmentType';
@@ -20,60 +22,76 @@ export const GROUP_LABELS: Record<GroupBy, string> = { city: 'City', building: '
 export interface GroupRow {
   key: string; label: string; sub: string;
   assets: number; inspected: number; inspections: number; passed: number; passRate: number | null;
-  openDefects: number; outOfService: number; overdue: number; dueSoon: number; never: number; compliance: number; inDate: number;
+  openDefects: number; outOfService: number;
+  /** Units not yet inspected in the quarter (for a finished quarter: missed). */
+  todo: number;
+  never: number;
+  /** Percentage of units done in the quarter. */
+  compliance: number;
+  /** Units done in the quarter. */
+  inDate: number;
+  /** Of those, units that failed and are out of service. */
+  doneFailed: number;
 }
 
 export interface DefectRow extends OpenDefect { asset: Asset; building?: Building; floor?: Floor }
 
 export interface Report {
   range: { from: string | null; to: string };
+  /** The quarter "done" is measured against: the current one, or the past quarter being looked at. */
+  quarter: Quarter;
+  /** True when that quarter is over (its numbers are final). */
+  closed: boolean;
+  daysLeft: number;
   kpis: {
     assets: number; inspectedInPeriod: number; inspections: number; passRate: number | null; compliance: number;
-    /** Assets whose inspection is current (done within the 90-day cycle). */
+    /** Units inspected in the quarter. */
     inDate: number;
-    openDefects: number; safetyCritical: number; outOfService: number; overdue: number; dueSoon: number; never: number; incompleteData: number;
+    /** Units not inspected in the quarter yet (missed, for a finished quarter). */
+    todo: number;
+    openDefects: number; safetyCritical: number; outOfService: number; never: number; incompleteData: number;
   };
   groups: GroupRow[];
   defects: DefectRow[];
-  due: Asset[];
-  /** Overdue, due within 14 days, or never inspected — the inspector's work list. */
+  /** Units still to inspect in the quarter (missed, for a finished one): the work list. */
   toInspect: Asset[];
   assets: Asset[];
   inspections: Inspection[];
 }
 
-/** Inspections are quarterly, so reports work in calendar quarters. */
+/** Inspections are quarterly, so reports work in financial-year quarters (Q3 = Oct–Dec). */
 export type Period = 'quarter' | 'last_quarter' | 'year' | 'all';
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-function quarterOf(iso: string, offset = 0) {
-  const y = +iso.slice(0, 4), m = +iso.slice(5, 7) - 1;
-  let q = Math.floor(m / 3) + offset, yy = y;
-  while (q < 0) { q += 4; yy--; }
-  const from = `${yy}-${String(q * 3 + 1).padStart(2, '0')}-01`;
-  const endMonth = q * 3 + 3;
-  const last = new Date(Date.UTC(yy, endMonth, 0)).getUTCDate();
-  return { from, to: `${yy}-${String(endMonth).padStart(2, '0')}-${last}`, label: `${MON[q * 3]}–${MON[q * 3 + 2]} ${yy}` };
+export function reportQuarter(f: Pick<ReportFilters, 'period' | 'quarterKey'>, today = todayISO()): Quarter {
+  const picked = f.quarterKey ? quarterFromKey(f.quarterKey) : null;
+  if (picked) return picked;
+  return f.period === 'last_quarter' ? shiftQuarter(quarterOf(today), -1) : quarterOf(today);
 }
 
-export function periodLabel(p: Period, today = todayISO()): string {
-  if (p === 'quarter') return `This quarter (${quarterOf(today).label})`;
-  if (p === 'last_quarter') return `Last quarter (${quarterOf(today, -1).label})`;
-  if (p === 'year') return `This year (${today.slice(0, 4)})`;
+export function periodLabel(p: Period, today = todayISO(), quarterKey?: string): string {
+  const picked = quarterKey ? quarterFromKey(quarterKey) : null;
+  if (picked) return `${quarterLabel(picked)} · ${fyLabel(picked)}`;
+  const now = quarterOf(today);
+  if (p === 'quarter') return `${quarterLabel(now)} · this quarter`;
+  if (p === 'last_quarter') return `${quarterLabel(shiftQuarter(now, -1))} · last quarter`;
+  if (p === 'year') return `${fyLabel(now)} · Apr–Mar`;
   return 'All time';
 }
 
-export function periodRange(f: Pick<ReportFilters, 'period'>, today = todayISO()): { from: string | null; to: string } {
+export function periodRange(f: Pick<ReportFilters, 'period' | 'quarterKey'>, today = todayISO()): { from: string | null; to: string } {
+  const picked = f.quarterKey ? quarterFromKey(f.quarterKey) : null;
+  if (picked) return { from: picked.from, to: picked.to < today ? picked.to : today };
+  const now = quarterOf(today);
   switch (f.period) {
-    case 'quarter': { const q = quarterOf(today); return { from: q.from, to: today }; }
-    case 'last_quarter': { const q = quarterOf(today, -1); return { from: q.from, to: q.to }; }
-    case 'year': return { from: `${today.slice(0, 4)}-01-01`, to: today };
+    case 'quarter': return { from: now.from, to: today };
+    case 'last_quarter': { const q = shiftQuarter(now, -1); return { from: q.from, to: q.to }; }
+    case 'year': return { from: shiftQuarter(now, -(now.n - 1)).from, to: today };
     default: return { from: null, to: today };
   }
 }
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+const signed = (i: Inspection) => i.status === 'submitted' || i.status === 'finalized';
 
 export function buildReport(
   data: { assets: Asset[]; buildings: Building[]; floors: Floor[]; inspections: Inspection[]; clients: Client[] },
@@ -82,20 +100,27 @@ export function buildReport(
   const bById = new Map(data.buildings.map((b) => [b.id, b]));
   const fById = new Map(data.floors.map((x) => [x.id, x]));
   const range = periodRange(f, today);
+  const quarter = reportQuarter(f, today);
+  const closed = quarter.to < today;
+  const daysLeft = closed ? 0 : daysLeftIn(quarter, today);
   const assets = data.assets.filter((a) => {
     const b = bById.get(a.buildingId);
+    if (a.status === 'removed') return false;
     if (f.clientId && a.clientId !== f.clientId) return false;
     if (f.city && b?.city !== f.city) return false;
     if (f.buildingId && a.buildingId !== f.buildingId) return false;
     if (f.floorId && (f.floorId === '__none' ? a.floorId : a.floorId !== f.floorId)) return false;
     if (f.equipmentType && a.equipmentType !== f.equipmentType) return false;
     if (f.status && a.status !== f.status) return false;
-    if (f.due && dueState(a.nextDueDate, today) !== f.due) return false;
     return true;
   });
   const assetIds = new Set(assets.map((a) => a.id));
-  const inspections = data.inspections.filter((i) => assetIds.has(i.assetId) && (i.status === 'submitted' || i.status === 'finalized')
+  const inspections = data.inspections.filter((i) => assetIds.has(i.assetId) && signed(i)
     && (!range.from || i.header.inspectionDate >= range.from) && i.header.inspectionDate <= range.to);
+  // Done = a signed inspection inside the quarter. For the current quarter the unit's own last date also counts,
+  // so a unit signed on this device shows as done straight away.
+  const doneIds = new Set(data.inspections.filter((i) => signed(i) && inQuarter(i.header.inspectionDate, quarter)).map((i) => i.assetId));
+  const isDone = (a: Asset) => doneIds.has(a.id) || (!closed && inQuarter(a.lastInspectionDate, quarter));
 
   const keyOf = (a: Asset): [string, string, string] => {
     const b = bById.get(a.buildingId);
@@ -117,7 +142,7 @@ export function buildReport(
   for (const a of assets) {
     const [key, label, sub] = keyOf(a);
     const g = groups.get(key) ?? { key, label, sub, assets: 0, inspected: 0, inspections: 0, passed: 0, passRate: null,
-      openDefects: 0, outOfService: 0, overdue: 0, dueSoon: 0, never: 0, compliance: 0, inDate: 0 };
+      openDefects: 0, outOfService: 0, todo: 0, never: 0, compliance: 0, inDate: 0, doneFailed: 0 };
     g.assets++;
     const ins = inspByAsset.get(a.id) ?? [];
     if (ins.length) g.inspected++;
@@ -125,64 +150,44 @@ export function buildReport(
     g.passed += ins.filter((i) => !i.result.defectsIdentified).length;
     g.openDefects += a.openDefects.length;
     if (a.status === 'out_of_service') g.outOfService++;
-    const d = dueState(a.nextDueDate, today);
-    if (d === 'overdue') g.overdue++;
-    if (d === 'due_soon') g.dueSoon++;
-    if (d === 'never') g.never++;
-    if (d === 'ok' || d === 'due_soon') g.compliance++;
+    if (!a.lastInspectionDate) g.never++;
+    if (isDone(a)) { g.inDate++; if (a.status === 'out_of_service') g.doneFailed++; } else g.todo++;
     groups.set(key, g);
   }
-  const rows = [...groups.values()].map((g) => ({ ...g, passRate: g.inspections ? pct(g.passed, g.inspections) : null, inDate: g.compliance, compliance: pct(g.compliance, g.assets) }))
+  const rows = [...groups.values()].map((g) => ({ ...g, passRate: g.inspections ? pct(g.passed, g.inspections) : null, compliance: pct(g.inDate, g.assets) }))
     .sort((a, b) => (a.sub + a.label).localeCompare(b.sub + b.label, undefined, { numeric: true }));
 
   const defects: DefectRow[] = assets.flatMap((a) => a.openDefects.map((d) => ({ ...d, asset: a, building: bById.get(a.buildingId), floor: a.floorId ? fById.get(a.floorId) : undefined })))
     .sort((x, y) => Number(y.safetyCritical) - Number(x.safetyCritical) || x.raisedAt.localeCompare(y.raisedAt));
-  const due = assets.filter((a) => ['overdue', 'due_soon'].includes(dueState(a.nextDueDate, today)))
-    .sort((x, y) => (x.nextDueDate ?? '').localeCompare(y.nextDueDate ?? ''));
-  const rank = { overdue: 0, due_soon: 1, never: 2, ok: 3 } as const;
-  const toInspect = assets.filter((a) => dueState(a.nextDueDate, today) !== 'ok' && a.status !== 'removed')
-    .sort((x, y) => rank[dueState(x.nextDueDate, today)] - rank[dueState(y.nextDueDate, today)] || (x.nextDueDate ?? '').localeCompare(y.nextDueDate ?? '')
-      || x.assetTag.localeCompare(y.assetTag, undefined, { numeric: true }));
+  const siteName = (a: Asset) => `${bById.get(a.buildingId)?.city ?? ''} ${bById.get(a.buildingId)?.name ?? ''}`;
+  const toInspect = assets.filter((a) => !isDone(a))
+    .sort((x, y) => siteName(x).localeCompare(siteName(y)) || x.assetTag.localeCompare(y.assetTag, undefined, { numeric: true }));
 
-  const states = assets.map((a) => dueState(a.nextDueDate, today));
   const passed = inspections.filter((i) => !i.result.defectsIdentified).length;
+  const done = assets.length - toInspect.length;
 
   return {
-    range,
+    range, quarter, closed, daysLeft,
     kpis: {
       assets: assets.length,
       inspectedInPeriod: new Set(inspections.map((i) => i.assetId)).size,
       inspections: inspections.length,
       passRate: inspections.length ? pct(passed, inspections.length) : null,
-      compliance: pct(states.filter((s) => s === 'ok' || s === 'due_soon').length, assets.length),
-      inDate: states.filter((s) => s === 'ok' || s === 'due_soon').length,
+      compliance: pct(done, assets.length),
+      inDate: done,
+      todo: toInspect.length,
       openDefects: defects.length,
       safetyCritical: defects.filter((d) => d.safetyCritical).length,
       outOfService: assets.filter((a) => a.status === 'out_of_service').length,
-      overdue: states.filter((s) => s === 'overdue').length,
-      dueSoon: states.filter((s) => s === 'due_soon').length,
-      never: states.filter((s) => s === 'never').length,
+      never: assets.filter((a) => !a.lastInspectionDate).length,
       incompleteData: assets.filter((a) => a.dataFlags.some((x) => x !== 'SERIAL_MISSING' && x !== 'FLOOR_UNASSIGNED')).length,
     },
-    groups: rows, defects, due, toInspect, assets, inspections,
+    groups: rows, defects, toInspect, assets, inspections,
   };
 }
 
-/**
- * Colour for the round-progress number. Red only when something is actually overdue: on day one nothing has been
- * inspected yet, and a red 0% would read as failure when the round simply has not started.
- */
-export function roundTone(k: { overdue: number; inDate: number; assets: number }): 'red' | 'green' | 'neutral' {
-  if (k.overdue > 0) return 'red';
-  if (k.assets > 0 && k.inDate >= k.assets) return 'green';
-  return 'neutral';
-}
-
-export const roundText = (k: { inDate: number; assets: number }) => (k.inDate === 0 ? 'Not started yet' : `${k.inDate} of ${k.assets} inspected`);
-
-export function daysOverdue(a: Asset, today = todayISO()) {
-  return a.nextDueDate ? -diffDays(a.nextDueDate, today) : null;
-}
+/** True when the quarter is in its last two weeks and work is left. */
+export const closingSoon = (r: Pick<Report, 'closed' | 'daysLeft' | 'kpis'>) => !r.closed && r.daysLeft <= CLOSING_DAYS && r.kpis.todo > 0;
 
 export function toCSV(rows: (string | number | null | undefined)[][]): string {
   return rows.map((r) => r.map((v) => {

@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import {
   addDays, blocking, canEdit, DEFAULT_TEMPLATES, deriveResult, EQUIPMENT_LABELS, formatDate, formatDateTime, FUNCTIONAL_TEST_LABELS,
-  functionalTestGate, HEADER_FIELDS, RESULT_LABELS, STATUS_LABELS, validateInspection,
+  functionalTestGate, HEADER_FIELDS, nextQuarterDue, quarterName, quarterOf, RESULT_LABELS, shiftQuarter, STATUS_LABELS, todayISO, validateInspection,
   type Asset, type CheckEntry, type CheckStatus, type ChecklistTemplate, type Inspection,
 } from '@think/shared';
 import { db } from '../lib/db.ts';
@@ -26,6 +26,7 @@ import { PaperView } from '../components/PaperView.tsx';
 import { FloorsSheet } from '../components/FloorTools.tsx';
 import { PersonPicker, PhotoStrip, SignaturePad } from '../components/Inputs.tsx';
 import { Badge, Button, Card, cx, Empty, EquipmentAvatar, Field, haptic, InspectionStatusBadge, Segmented, Sheet, useToast } from '../components/ui.tsx';
+import { DateField, Suggestions } from '../components/Pickers.tsx';
 
 /** Plain words instead of the paper form's codes. The stored values (and the certificate) keep P / F / M / NA / RECT. */
 const STATUS_WORD: Record<CheckStatus, string> = { P: 'OK', F: 'Problem', M: 'Service', NA: 'N/A', RECT: 'Fixed' };
@@ -291,8 +292,9 @@ function Editor({ initial, template: t }: { initial: Inspection; template: Check
                   <div className="mt-4 grid gap-3">
                     <div className="grid gap-3 sm:grid-cols-2">
                       <Field label={FUNCTIONAL_TEST_LABELS.method} error={err('functionalTest.method')}>
-                        <input className="input" list="test-methods" value={insp.functionalTest.method} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, method: e.target.value } }))} />
-                        <datalist id="test-methods"><option value="As per manufacturer instructions" /><option value="Push and brake test on ramp with occupant" /><option value="Assemble, lock and lift test" /></datalist>
+                        <input className="input" value={insp.functionalTest.method} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, method: e.target.value } }))} />
+                        <Suggestions items={['As per manufacturer instructions', 'Push and brake test on ramp with occupant', 'Assemble, lock and lift test'].filter((m) => m !== insp.functionalTest.method)}
+                          onPick={(m) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, method: m } }))} />
                       </Field>
                       <Field label={FUNCTIONAL_TEST_LABELS.observations} error={err('functionalTest.observations')}>
                         <input className="input" value={insp.functionalTest.observations} onChange={(e) => update((d) => ({ ...d, functionalTest: { ...d.functionalTest, observations: e.target.value } }))} />
@@ -445,13 +447,16 @@ function HeaderInput({ f, insp, t, update, error }: { f: (typeof HEADER_FIELDS)[
   const set = (v: string) => update((d) => {
     const nh = { ...d.header, [f.key]: v };
     if (f.key === 'technician' && (d.header.inspectionPerformedBy === d.header.technician || !d.header.inspectionPerformedBy)) nh.inspectionPerformedBy = v;
-    if (f.key === 'inspectionDate' && v && (!d.header.nextDueDate || d.header.nextDueDate === addDays(d.header.inspectionDate, t.intervalDays))) nh.nextDueDate = addDays(v, t.intervalDays);
+    // Next due follows the inspection date unless someone set their own (older drafts used +90 days).
+    if (f.key === 'inspectionDate' && v && (!d.header.nextDueDate || d.header.nextDueDate === nextQuarterDue(d.header.inspectionDate)
+      || d.header.nextDueDate === addDays(d.header.inspectionDate, t.intervalDays))) nh.nextDueDate = nextQuarterDue(v);
     return { ...d, header: nh };
   });
   if (f.kind === 'person') return <Field label={f.label} error={error}><PersonPicker value={h[f.key] as string} onChange={set} error={!!error} /></Field>;
   if (f.kind === 'date') return (
-    <Field label={f.label} error={error} hint={f.key === 'nextDueDate' ? 'Quarterly: +90 days' : undefined}>
-      <input type="date" className={cx('input', error && 'input-error')} value={(h[f.key] as string) ?? ''} onChange={(e) => set(e.target.value)} />
+    <Field label={f.label} error={error} hint={f.key === 'nextDueDate' && h.inspectionDate ? `Quarterly: due in ${quarterName(shiftQuarter(quarterOf(h.inspectionDate), 1))}, by ${formatDate(nextQuarterDue(h.inspectionDate))}` : undefined}>
+      <DateField error={!!error} value={(h[f.key] as string) ?? ''} onChange={set} ariaLabel={f.label}
+        max={f.key === 'installDate' || f.key === 'previousMaintenanceDate' ? todayISO() : undefined} clearable={f.key === 'installDate' || f.key === 'previousMaintenanceDate'} />
     </Field>
   );
   return (
