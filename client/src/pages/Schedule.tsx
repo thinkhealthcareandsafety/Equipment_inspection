@@ -44,7 +44,7 @@ export function Schedule() {
   const open = (buildingId: string, visit?: Visit) => { const b = bById.get(buildingId); if (b) setPlan({ building: b, visit }); };
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-[1400px]">
       <PageHeader title="Schedule" subtitle={`${quarterLabel(q)} · ${report.daysLeft} days left. Plan which site is inspected when, and who goes.`} />
 
       <QuarterStrip q={q} today={today} visits={planned.filter((v) => v.date <= q.to)} names={bById} />
@@ -54,21 +54,29 @@ export function Schedule() {
         {' '}{notPlanned.length === 0 ? 'Every site with work left has a visit.' : <><strong className="text-slate-900">{notPlanned.length} {notPlanned.length === 1 ? 'site' : 'sites'}</strong> with units left {notPlanned.length === 1 ? 'has' : 'have'} no visit yet.</>}
       </p>
 
-      {upcoming.length === 0 && (
-        <Card className="mb-8">
-          <Empty icon={<CalendarDays className="h-6 w-6" />} title="Plan this quarter's visits">
-            Pick a day and an inspector for each site below. Everyone sees the plan on their phone, and Home shows what is coming up.
-          </Empty>
-        </Card>
-      )}
 
-      <div className="space-y-7">
+      <div className="grid items-start gap-x-6 gap-y-7 lg:grid-cols-2">
+      <div className="min-w-0 space-y-7">
+        {upcoming.length === 0 && earlier.length === 0 && (
+          <Section title="Planned visits">
+            <Empty icon={<CalendarDays className="h-6 w-6" />} title="Plan this quarter's visits">
+              Tap <strong className="text-slate-700">Plan</strong> next to a site, pick the day and who goes. Everyone sees the plan, and Home shows what is coming up.
+            </Empty>
+          </Section>
+        )}
         {[...buckets.entries()].map(([title, list]) => (
           <Section key={title} title={title}>
             {list.map((v) => <VisitRow key={v.id} v={v} b={bById.get(v.buildingId)!} left={left.get(v.buildingId) ?? 0} onEdit={() => open(v.buildingId, v)} />)}
           </Section>
         ))}
 
+        {earlier.length > 0 && (
+          <Section title={`Earlier in ${quarterName(q)}`}>
+            {earlier.map((v) => <VisitRow key={v.id} v={v} b={bById.get(v.buildingId)!} left={left.get(v.buildingId) ?? 0} past onEdit={() => open(v.buildingId, v)} />)}
+          </Section>
+        )}
+      </div>
+      <div className="min-w-0 space-y-7">
         {notPlanned.length > 0 && (
           <Section title="Not planned yet" right={<span className="text-[13px] text-slate-500">most work first</span>}>
             {notPlanned.map((g) => (
@@ -86,11 +94,7 @@ export function Schedule() {
           </Section>
         )}
 
-        {earlier.length > 0 && (
-          <Section title={`Earlier in ${quarterName(q)}`}>
-            {earlier.map((v) => <VisitRow key={v.id} v={v} b={bById.get(v.buildingId)!} left={left.get(v.buildingId) ?? 0} past onEdit={() => open(v.buildingId, v)} />)}
-          </Section>
-        )}
+      </div>
       </div>
 
       {plan && <ScheduleSheet open onClose={() => setPlan(null)} building={plan.building} visit={plan.visit} left={left.get(plan.building.id) ?? 0} />}

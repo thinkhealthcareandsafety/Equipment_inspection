@@ -30,9 +30,9 @@ export function Sites() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-[1400px]">
       <PageHeader title="Sites" subtitle={`Pick a site, then tap a unit to inspect it. ${quarterLabel(quarterOf())}.`} />
-      <SearchField id="site-list-search" value={q} onChange={setQ} placeholder="Search a site or city" />
+      <SearchField id="site-list-search" className="sm:max-w-md" value={q} onChange={setQ} placeholder="Search a site or city" />
       <div className="scrollbar-none -mx-4 mb-6 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <Chip active={!city} onClick={() => setCity('')}>All cities</Chip>
         {cities.map((c) => <Chip key={c} active={city === c} onClick={() => setCity(c)}>{c}</Chip>)}
@@ -47,7 +47,7 @@ export function Sites() {
         </section>
       )}
       {byCity.size === 0 && <Empty title="No sites match">Try the city name, or part of the site name.</Empty>}
-      <div className="space-y-7">
+      <div className="gap-6 xl:columns-2 [&>section]:mb-7 [&>section]:break-inside-avoid">
         {[...byCity.entries()].sort().map(([c, groups]) => (
           <section key={c}>
             <div className="caption">{c} · {groups.reduce((s, g) => s + g.assets, 0)} assets</div>

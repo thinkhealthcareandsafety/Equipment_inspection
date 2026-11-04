@@ -128,7 +128,7 @@ export function Shell() {
 
       {/* Top bar */}
       <header className="material-canvas sticky top-0 z-20 border-b-[0.5px] border-black/10">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-10">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-3 px-4 sm:px-6 lg:px-10">
           <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
             <img src={`${import.meta.env.BASE_URL}icon.svg`} className="h-8 w-8 shrink-0 rounded-[9px]" alt="" />
             <span className="hidden truncate whitespace-nowrap text-[17px] font-semibold tracking-[-0.01em] min-[380px]:inline">Think Inspect</span>
@@ -146,7 +146,7 @@ export function Shell() {
         </div>
       </header>
 
-      <main key={loc.pathname} className="animate-rise mx-auto max-w-7xl px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-12">
+      <main key={loc.pathname} className="animate-rise mx-auto max-w-[1600px] px-4 pb-28 pt-6 sm:px-6 lg:px-10 lg:pb-12">
         <Outlet />
       </main>
 
