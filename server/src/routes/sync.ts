@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { isISODate, uuid, type Inspection, type SiteContact } from '@think/shared';
+import { DOCUMENT_MAX_BYTES, DOCUMENT_TYPES, isISODate, uuid, type Inspection, type SiteContact } from '@think/shared';
 import { audit, getDb, type Queryable } from '../db.ts';
 import { isStaff, requireAuth, scope, type AuthUser } from '../lib/auth.ts';
-import { toAsset, toBuilding, toClient, toFloor, toInspection, toLocation, toTeam, toVisit } from '../lib/mappers.ts';
+import { toAsset, toBuilding, toClient, toDocument, toFloor, toInspection, toLocation, toTeam, toVisit } from '../lib/mappers.ts';
 import { OpError, upsertInspection } from '../services/inspections.ts';
 import { sendVisitMail, type VisitChange } from '../services/visitMail.ts';
 
@@ -35,6 +35,7 @@ sync.get('/pull', async (req, res) => {
        UNION ALL SELECT seq FROM inspections WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM photos WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM visits WHERE seq > $1 ${own('client_id')}
+       UNION ALL SELECT seq FROM documents WHERE seq > $1 ${own('client_id')}
        UNION ALL SELECT seq FROM templates WHERE seq > $1
        UNION ALL SELECT seq FROM team_members WHERE seq > $1
        UNION ALL SELECT seq FROM notifications WHERE seq > $1 ${cid ? 'AND (client_id IS NULL OR client_id = $3)' : ''}
@@ -46,7 +47,7 @@ sync.get('/pull', async (req, res) => {
   const sel = (table: string, scoped = true) =>
     db.query(`SELECT * FROM ${table} WHERE seq > $1 AND seq <= $2 ${scoped ? `AND ${s.sql}` : ''} ORDER BY seq`, [since, upTo, ...(scoped ? s.params : [])]);
   const cs = u.role === 'client_admin' ? { sql: 'id = $3', params: [u.clientId] } : { sql: 'true', params: [] };
-  const [clients, buildings, floors, locations, assets, inspections, photos, templates, team, notifications, visits] = await Promise.all([
+  const [clients, buildings, floors, locations, assets, inspections, photos, templates, team, notifications, visits, documents] = await Promise.all([
     db.query(`SELECT * FROM clients WHERE seq > $1 AND seq <= $2 AND ${cs.sql}`, [since, upTo, ...cs.params]),
     sel('buildings'), sel('floors'), sel('locations'), sel('assets'), sel('inspections'),
     db.query(`SELECT id, inspection_id, client_id, check_no, mime, caption, created_by, created_at, seq FROM photos
@@ -55,6 +56,8 @@ sync.get('/pull', async (req, res) => {
     isStaff(u) ? sel('team_members', false) : Promise.resolve({ rows: [] }),
     db.query(`SELECT * FROM notifications WHERE seq > $1 AND seq <= $2 AND (client_id IS NULL OR ${s.sql}) ORDER BY seq`, [since, upTo, ...s.params]),
     sel('visits'),
+    db.query(`SELECT id, client_id, building_id, kind, number, doc_date, note, file_name, mime, size, created_by, created_by_name, created_at, deleted, seq
+              FROM documents WHERE seq > $1 AND seq <= $2 AND ${s.sql} ORDER BY seq`, [since, upTo, ...s.params]),
   ]);
   res.json({
     cursor: upTo,
@@ -71,6 +74,7 @@ sync.get('/pull', async (req, res) => {
     templates: templates.rows.map((r: any) => ({ ...r.definition, active: r.active })),
     team: team.rows.map(toTeam),
     visits: visits.rows.map(toVisit),
+    documents: documents.rows.map(toDocument),
     notifications: notifications.rows.map((r: any) => ({ id: r.id, clientId: r.client_id, assetId: r.asset_id, kind: r.kind, title: r.title,
       body: r.body, createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at })),
   });
@@ -78,7 +82,7 @@ sync.get('/pull', async (req, res) => {
 
 const Op = z.object({
   opId: z.string().min(8),
-  type: z.enum(['inspection.upsert', 'photo.put', 'asset.update', 'floor.upsert', 'location.upsert', 'team.upsert', 'visit.upsert', 'building.contacts']),
+  type: z.enum(['inspection.upsert', 'photo.put', 'asset.update', 'floor.upsert', 'location.upsert', 'team.upsert', 'visit.upsert', 'building.contacts', 'document.put']),
   clientAt: z.string().optional(),
   offline: z.boolean().optional(),
   payload: z.any(),
@@ -233,6 +237,37 @@ async function apply(q: Queryable, u: AuthUser, type: string, p: any, meta: Meta
         });
       }
       return saved;
+    }
+
+    case 'document.put': {
+      const b = (await q.query<{ client_id: string }>('SELECT client_id FROM buildings WHERE id = $1', [p.buildingId])).rows[0];
+      if (!b) throw new OpError('not_found', 'Site not found');
+      const number = clip(p.number, 60);
+      if (!number && !p.deleted) throw new OpError('invalid', 'Enter the purchase order number');
+      if (p.date && !isISODate(p.date)) throw new OpError('invalid', 'Check the purchase order date');
+      let data: Buffer | null = null;
+      if (p.data) {
+        if (!DOCUMENT_TYPES.includes(p.mime)) throw new OpError('invalid', 'Attach a photo (JPG or PNG) or a PDF');
+        data = Buffer.from(String(p.data), 'base64');
+        if (data.length > DOCUMENT_MAX_BYTES) throw new OpError('invalid', 'That file is too large (3 MB at most)');
+      }
+      const prev = (await q.query<Record<string, any>>('SELECT id, number, deleted FROM documents WHERE id = $1', [p.id])).rows[0];
+      if (!prev) {
+        await q.query(`INSERT INTO documents (id, client_id, building_id, kind, number, doc_date, note, file_name, mime, size, data, created_by, created_by_name, deleted)
+          VALUES ($1,$2,$3,'purchase_order',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+          [p.id, b.client_id, p.buildingId, number, p.date || null, clip(p.note, 500), data ? clip(p.fileName, 120) || null : null, data ? p.mime : null,
+            data ? data.length : null, data, u.id, clip(p.createdByName || u.name, 80), !!p.deleted]);
+      } else if (data) {
+        await q.query(`UPDATE documents SET number=$2, doc_date=$3, note=$4, file_name=$5, mime=$6, size=$7, data=$8, deleted=$9, seq=nextval('change_seq') WHERE id=$1`,
+          [p.id, number || prev.number, p.date || null, clip(p.note, 500), clip(p.fileName, 120) || null, p.mime, data.length, data, !!p.deleted]);
+      } else {
+        await q.query(`UPDATE documents SET number=$2, doc_date=$3, note=$4, deleted=$5, seq=nextval('change_seq') WHERE id=$1`,
+          [p.id, number || prev.number, p.date || null, clip(p.note, 500), !!p.deleted]);
+      }
+      await audit(q, { user: u, action: p.deleted ? 'po.delete' : prev ? 'po.update' : 'po.add', entityType: 'document', entityId: p.id, clientId: b.client_id,
+        changes: { site: p.buildingId, number, date: p.date || null, file: data ? { mime: p.mime, size: data.length } : null }, ...meta });
+      return toDocument((await q.query(`SELECT id, client_id, building_id, kind, number, doc_date, note, file_name, mime, size, created_by, created_by_name, created_at, deleted, seq
+        FROM documents WHERE id = $1`, [p.id])).rows[0]);
     }
 
     case 'building.contacts': {

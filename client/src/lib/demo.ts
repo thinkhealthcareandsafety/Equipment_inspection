@@ -74,6 +74,10 @@ export async function demoApi<T>(path: string, init: RequestInit & { json?: unkn
           const b = await db.buildings.get(op.payload.id);
           result = b ? { ...b, contacts: op.payload.contacts } : { ok: true };
           audit('site.contacts', 'building', { contacts: op.payload.contacts?.length ?? 0 });
+        } else if (op.type === 'document.put') {
+          const { data: _d, withFile: _w, ...meta } = op.payload;
+          result = meta;
+          audit(op.payload.deleted ? 'po.delete' : 'po.add', 'document', { number: op.payload.number });
         } else if (op.type === 'team.upsert') {
           audit(op.payload.active === false ? 'team.remove' : 'team.add', 'team_member', { name: op.payload.name, designation: op.payload.designation });
         } else if (op.type !== 'photo.put') {

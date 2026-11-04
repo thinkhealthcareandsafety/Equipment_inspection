@@ -181,6 +181,16 @@ CREATE INDEX IF NOT EXISTS visits_seq ON visits(seq);
 
 ALTER TABLE buildings ADD COLUMN IF NOT EXISTS contacts jsonb NOT NULL DEFAULT '[]';
 
+CREATE TABLE IF NOT EXISTS documents (
+  id uuid PRIMARY KEY, client_id uuid NOT NULL, building_id uuid NOT NULL REFERENCES buildings(id),
+  kind text NOT NULL DEFAULT 'purchase_order', number text NOT NULL DEFAULT '', doc_date text, note text NOT NULL DEFAULT '',
+  file_name text, mime text, size int, data bytea,
+  created_by uuid, created_by_name text NOT NULL DEFAULT '', created_at timestamptz NOT NULL DEFAULT now(),
+  deleted boolean NOT NULL DEFAULT false,
+  seq bigint NOT NULL DEFAULT nextval('change_seq')
+);
+CREATE INDEX IF NOT EXISTS documents_seq ON documents(seq);
+
 CREATE TABLE IF NOT EXISTS app_flags (
   key text PRIMARY KEY, value jsonb, at timestamptz NOT NULL DEFAULT now()
 );

@@ -9,6 +9,7 @@ import { EQUIPMENT_LABELS, formatDate, fyLabel, missingDetails, quarterFromKey, 
 import { useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
+import { sortDocs } from '../components/Documents.tsx';
 import { saveFile } from '../lib/files.ts';
 import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge, QuarterBadge, SearchField, Segmented, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
@@ -60,13 +61,14 @@ export function Reports() {
   const noRecord = closed && report.inspections.length === 0;
   const heading = periodLabel(period, todayISO(), quarterKey);
 
+  const sitePo = buildingId ? sortDocs(data.documents.filter((d) => d.buildingId === buildingId))[0] : undefined;
   const fileBase = `${place.replace(/[^\w]+/g, '-')}_${quarterKey || period}_${todayISO()}`;
   const exportPdf = async () => {
     setBusy(true);
     try {
       await saveFile(`Inspection-report_${fileBase}.pdf`, summaryReport(report, {
         title: `Inspection Report — ${place}`, groupBy: group, generatedBy: user.name,
-        filters: [heading, type ? EQUIPMENT_LABELS[type] : 'All equipment'],
+        filters: [heading, type ? EQUIPMENT_LABELS[type] : 'All equipment', ...(sitePo ? [`Purchase order ${sitePo.number}${sitePo.date ? ` (${formatDate(sitePo.date)})` : ''}`] : [])],
       }).output('blob'));
     } catch (e) { toast((e as Error).message, 'err'); } finally { setBusy(false); }
   };

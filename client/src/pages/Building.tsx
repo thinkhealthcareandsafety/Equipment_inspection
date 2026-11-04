@@ -12,6 +12,7 @@ import { openOrCreateInspection, updateAsset, upsertFloor, upsertLocation } from
 import { AssetStatusBadge, Badge, Bar, Button, Card, Chip, cx, DismissButton, Empty, EquipmentAvatar, Field, PageHeader, QuarterBadge, SearchField, Sheet, useToast } from '../components/ui.tsx';
 import { Select } from '../components/Pickers.tsx';
 import { ContactLine, ContactsSheet, DateTile, nextVisit, ScheduleSheet } from '../components/Plan.tsx';
+import { PoCell, PurchaseOrderSheet } from '../components/Documents.tsx';
 import { Skeleton } from './Dashboard.tsx';
 import { rememberSite, textMatches } from '../lib/search.ts';
 import { FloorsSheet } from '../components/FloorTools.tsx';
@@ -39,17 +40,19 @@ export function BuildingPage() {
   const [printing, setPrinting] = useState(false);
   const [planOpen, setPlanOpen] = useState(false);
   const [contacts, setContacts] = useState<{ startNew: boolean } | null>(null);
+  const [po, setPo] = useState<{ startNew: boolean } | null>(null);
   const [floorsTipHidden, hideFloorsTip] = useDismissed('floors-tip');
   const [unassignedHidden, hideUnassigned] = useDismissed('unassigned-note');
 
   const data = useLiveQuery(async () => {
-    const [building, floors, locations, assets, visits] = await Promise.all([
+    const [building, floors, locations, assets, visits, documents] = await Promise.all([
       db.buildings.get(buildingId), db.floors.where('buildingId').equals(buildingId).toArray(),
       db.locations.where('buildingId').equals(buildingId).toArray(), db.assets.where('buildingId').equals(buildingId).toArray(),
       db.visits.where('buildingId').equals(buildingId).toArray(),
+      db.documents.where('buildingId').equals(buildingId).toArray(),
     ]);
     const client = building ? await db.clients.get(building.clientId) : undefined;
-    return { building, client, visits, floors: floors.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, undefined, { numeric: true })), locations,
+    return { building, client, visits, documents: documents.map(({ blob: _b, ...d }) => d), floors: floors.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, undefined, { numeric: true })), locations,
       assets: assets.filter((a) => a.status !== 'removed') };
   }, [buildingId]);
 
@@ -109,8 +112,9 @@ export function BuildingPage() {
         </>} />
 
       {/* At a glance: this quarter, who to call, when we go */}
-      <Card className="mb-6 grid grid-cols-1 overflow-hidden md:grid-cols-[1fr_1.1fr_1.1fr]">
-        <div className="p-4 sm:p-5">
+      <Card className="mb-6 overflow-hidden">
+        <div className="grid grid-cols-1 gap-px bg-black/[.08] md:grid-cols-2 2xl:grid-cols-4">
+        <div className="bg-white p-4 sm:p-5">
           <div className="mb-2.5 text-[13px] font-semibold text-slate-500">{quarterLabel(quarter)}</div>
           <div className="flex items-baseline gap-1.5"><span className="text-[26px] font-bold leading-none tracking-[-0.02em] tabular">{doneQ}</span><span className="text-[15px] text-slate-500">of {assets.length} done</span></div>
           <div className="mt-2.5"><Bar value={assets.length ? (doneQ / assets.length) * 100 : 0} tone="brand" /></div>
@@ -121,11 +125,15 @@ export function BuildingPage() {
             </button>
           )}
         </div>
-        <div className="border-t-[0.5px] border-black/10 p-4 sm:p-5 md:border-l-[0.5px] md:border-t-0">
+        <div className="bg-white p-4 sm:p-5">
           <div className="mb-2.5 text-[13px] font-semibold text-slate-500">Site contact</div>
           <ContactLine building={building} onManage={(startNew) => setContacts({ startNew })} />
         </div>
-        <div className="border-t-[0.5px] border-black/10 p-4 sm:p-5 md:border-l-[0.5px] md:border-t-0">
+        <div className="bg-white p-4 sm:p-5">
+          <div className="mb-2.5 text-[13px] font-semibold text-slate-500">Purchase order</div>
+          <PoCell docs={data.documents} onOpen={(startNew) => setPo({ startNew })} />
+        </div>
+        <div className="bg-white p-4 sm:p-5">
           <div className="mb-2.5 text-[13px] font-semibold text-slate-500">Next visit</div>
           {visit ? (
             <button type="button" onClick={() => setPlanOpen(true)} data-next-visit className="flex w-full items-center gap-3 text-left transition active:opacity-70">
@@ -145,6 +153,7 @@ export function BuildingPage() {
               </span>
             </button>
           )}
+        </div>
         </div>
       </Card>
 
@@ -285,6 +294,7 @@ export function BuildingPage() {
 
       <ScheduleSheet open={planOpen} onClose={() => setPlanOpen(false)} building={building} visit={visit} left={kp.todo} />
       {contacts && <ContactsSheet open onClose={() => setContacts(null)} building={building} startNew={contacts.startNew} />}
+      {po && <PurchaseOrderSheet open onClose={() => setPo(null)} building={building} docs={data.documents} startNew={po.startNew} />}
       <FloorsSheet open={floorsOpen} onClose={() => setFloorsOpen(false)} building={{ id: buildingId, clientId: building.clientId }} floors={floors} />
       <Sheet open={!!floorEdit} onClose={() => setFloorEdit(null)} title={floorEdit?.id ? 'Rename floor' : 'Add floor'} footer={<>
         {floorEdit?.id && <Button variant="ghost" className="text-rose-600" icon={<Trash2 className="h-4 w-4" />} onClick={async () => {

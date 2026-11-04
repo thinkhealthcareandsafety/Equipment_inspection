@@ -36,6 +36,19 @@ api.get('/photos/:id', async (req, res) => {
   res.end(Buffer.from(r.data));
 });
 
+// ---------- site documents (purchase orders) ----------
+api.get('/documents/:id', async (req, res) => {
+  const db = await getDb();
+  const s = scope(req.user!, 'client_id', 1);
+  const r = (await db.query<{ data: Uint8Array | null; mime: string | null; file_name: string | null }>(
+    `SELECT data, mime, file_name FROM documents WHERE id = $1 AND NOT deleted AND ${s.sql}`, [req.params.id, ...s.params])).rows[0];
+  if (!r?.data || !r.mime) return res.status(404).end();
+  res.setHeader('Content-Type', r.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${(r.file_name ?? 'purchase-order').replace(/[^\w.\- ]+/g, '_')}"`);
+  res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  res.end(Buffer.from(r.data));
+});
+
 // ---------- inventory import ----------
 api.post('/import/preview', requireRole('admin'), upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Attach the inventory .xlsx file' });

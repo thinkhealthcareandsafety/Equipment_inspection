@@ -1,7 +1,10 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
-  Asset, Building, ChecklistTemplate, Client, Floor, Inspection, Location, PhotoMeta, TeamMember, Visit,
+  Asset, Building, ChecklistTemplate, Client, Floor, Inspection, Location, PhotoMeta, SiteDocument, TeamMember, Visit,
 } from '@think/shared';
+
+/** A site document as kept on this device; the file itself is kept once it was added here or opened. */
+export interface LocalDocument extends SiteDocument { blob?: Blob; synced?: boolean }
 
 export interface LocalPhoto extends PhotoMeta {
   blob?: Blob; // present when captured on this device or cached after download
@@ -11,7 +14,7 @@ export interface LocalPhoto extends PhotoMeta {
 export interface OutboxOp {
   seq?: number;
   opId: string;
-  type: 'inspection.upsert' | 'photo.put' | 'asset.update' | 'floor.upsert' | 'location.upsert' | 'team.upsert' | 'visit.upsert' | 'building.contacts';
+  type: 'inspection.upsert' | 'photo.put' | 'asset.update' | 'floor.upsert' | 'location.upsert' | 'team.upsert' | 'visit.upsert' | 'building.contacts' | 'document.put';
   entityId: string;
   payload: unknown;
   clientAt: string;
@@ -37,6 +40,7 @@ export const db = new Dexie('think-inspect') as Dexie & {
   team: EntityTable<TeamMember, 'id'>;
   notifications: EntityTable<Notice, 'id'>;
   visits: EntityTable<Visit, 'id'>;
+  documents: EntityTable<LocalDocument, 'id'>;
   outbox: EntityTable<OutboxOp, 'seq'>;
   meta: EntityTable<Meta, 'key'>;
 };
@@ -57,6 +61,8 @@ db.version(1).stores({
 });
 // v2: planned site visits (the quarter's schedule). Existing tables and data are kept as they are.
 db.version(2).stores({ visits: 'id, buildingId, date' });
+// v3: site documents (purchase orders).
+db.version(3).stores({ documents: 'id, buildingId' });
 
 export async function getMeta<T>(key: string, fallback: T): Promise<T> {
   return ((await db.meta.get(key))?.value as T) ?? fallback;

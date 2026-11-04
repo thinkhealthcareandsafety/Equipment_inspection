@@ -88,6 +88,29 @@ export interface Building {
   seq?: number;
 }
 
+/** A paper that belongs to a site, for now the client's purchase order: its number, date, and a photo or PDF. */
+export interface SiteDocument {
+  id: string;
+  clientId: string;
+  buildingId: string;
+  kind: 'purchase_order';
+  number: string;
+  date: string | null; // YYYY-MM-DD
+  note: string;
+  fileName: string | null;
+  mime: string | null; // null when only the number was recorded
+  size: number | null;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  deleted?: boolean;
+  seq?: number;
+}
+
+export const DOCUMENT_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+/** Kept under the host's 4.5 MB request limit once base64-encoded. */
+export const DOCUMENT_MAX_BYTES = 3_000_000;
+
 /** A planned visit to a site to inspect its units. "Done" is derived from the units, not stored. */
 export interface Visit {
   id: string;

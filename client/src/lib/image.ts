@@ -10,15 +10,17 @@ async function render(bmp: ImageBitmap, max: number, quality: number): Promise<B
 }
 
 /** Downscales a camera photo to a JPEG under ~1.2 MB so it syncs quickly over weak connections. */
-export async function compressImage(file: Blob): Promise<Blob> {
+export async function compressImage(file: Blob, opts: { max?: number; quality?: number; maxBytes?: number } = {}): Promise<Blob> {
+  const limit = opts.maxBytes ?? MAX_BYTES;
   const bmp = await createImageBitmap(file).catch(() => null);
   if (!bmp) {
-    if (file.size > MAX_BYTES * 2) throw new Error('That photo could not be read. Use the camera button to take it instead.');
+    if (file.size > limit * 2) throw new Error('That photo could not be read. Use the camera button to take it instead.');
     return file;
   }
-  for (const [max, q] of [[1600, 0.8], [1280, 0.7], [1024, 0.6], [800, 0.5]] as const) {
+  const first = opts.max ? [[opts.max, opts.quality ?? 0.85] as const] : [];
+  for (const [max, q] of [...first, [1600, 0.8], [1280, 0.7], [1024, 0.6], [800, 0.5]] as const) {
     const b = await render(bmp, max, q);
-    if (b && b.size <= MAX_BYTES) return b;
+    if (b && b.size <= limit) return b;
   }
   throw new Error('That photo is too large to attach. Take it again with the camera button.');
 }

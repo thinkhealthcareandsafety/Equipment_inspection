@@ -1,4 +1,4 @@
-import type { Asset, Building, Client, Floor, Inspection, Location, TeamMember, Visit } from '@think/shared';
+import type { Asset, Building, Client, Floor, Inspection, Location, SiteDocument, TeamMember, Visit } from '@think/shared';
 
 type Row = Record<string, any>;
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
@@ -9,6 +9,12 @@ export const toClient = (r: Row): Client => ({ id: r.id, name: r.name, code: r.c
 export const toBuilding = (r: Row): Building => ({
   id: r.id, clientId: r.client_id, name: r.name, city: r.city, code: r.code, address: r.address, notes: r.notes,
   contacts: Array.isArray(r.contacts) ? r.contacts : [], seq: num(r.seq),
+});
+
+export const toDocument = (r: Row): SiteDocument => ({
+  id: r.id, clientId: r.client_id, buildingId: r.building_id, kind: 'purchase_order', number: r.number ?? '', date: r.doc_date ?? null,
+  note: r.note ?? '', fileName: r.file_name ?? null, mime: r.mime ?? null, size: r.size == null ? null : Number(r.size),
+  createdBy: r.created_by, createdByName: r.created_by_name ?? '', createdAt: iso(r.created_at)!, deleted: !!r.deleted, seq: num(r.seq),
 });
 
 export const toVisit = (r: Row): Visit => ({

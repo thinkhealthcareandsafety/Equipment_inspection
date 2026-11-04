@@ -3,9 +3,11 @@ import {
   applyDerivedResult, assetAfterInspection, DEFAULT_TEMPLATES, emptyChecks, emptyFunctionalTest, lockMessage, needsInspection,
   nextQuarterDue, normalizeFunctionalTest, quarterLock, REVIEW_REQUIRED, todayISO, uuid,
   type Asset, type Building, type ChecklistTemplate, type EquipmentType, type Inspection, type InspectionEvent, type Signature, type SiteContact,
-  type TeamMember, type User, type Visit,
+  type TeamMember, type User, type Visit, type SiteDocument, DOCUMENT_MAX_BYTES, DOCUMENT_TYPES,
 } from '@think/shared';
 import { db } from './db.ts';
+import { getSession } from './api.ts';
+import { compressImage } from './image.ts';
 import { enqueue } from './sync.ts';
 
 export async function templateFor(id: EquipmentType): Promise<ChecklistTemplate> {
@@ -238,4 +240,51 @@ export async function saveSiteContacts(building: Building, contacts: SiteContact
     .filter((c) => c.name);
   await db.buildings.update(building.id, { contacts: clean });
   await enqueue({ type: 'building.contacts', entityId: building.id, payload: { id: building.id, contacts: clean } }, true);
+}
+
+/** Prepares a purchase-order file: photos are shrunk to a sharp, readable JPEG; PDFs are kept as they are. */
+export async function prepareDocumentFile(file: File): Promise<{ blob: Blob; name: string; mime: string }> {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    if (file.size > DOCUMENT_MAX_BYTES) throw new Error('That PDF is larger than 3 MB. Take a photo of the purchase order instead.');
+    return { blob: file, name: file.name || 'purchase-order.pdf', mime: 'application/pdf' };
+  }
+  if (!file.type.startsWith('image/')) throw new Error('Attach a photo or a PDF of the purchase order.');
+  const blob = await compressImage(file, { max: 2200, quality: 0.85, maxBytes: 2_400_000 });
+  return { blob, name: (file.name || 'purchase-order').replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg' };
+}
+
+/** Adds or changes a site's purchase order. A new file is sent with it; an unchanged one stays on the server. */
+export async function saveDocument(d: { id?: string; buildingId: string; clientId: string; number: string; date: string | null; note: string;
+  file?: { blob: Blob; name: string; mime: string } | null }, user: User): Promise<SiteDocument> {
+  const prev = d.id ? await db.documents.get(d.id) : undefined;
+  if (d.file && !DOCUMENT_TYPES.includes(d.file.mime)) throw new Error('Attach a photo or a PDF of the purchase order.');
+  const doc = {
+    id: d.id ?? uuid(), clientId: d.clientId, buildingId: d.buildingId, kind: 'purchase_order' as const, number: d.number.trim(), date: d.date || null,
+    note: d.note.trim(), fileName: d.file ? d.file.name : prev?.fileName ?? null, mime: d.file ? d.file.mime : prev?.mime ?? null,
+    size: d.file ? d.file.blob.size : prev?.size ?? null, createdBy: prev?.createdBy ?? user.id, createdByName: prev?.createdByName ?? user.name,
+    createdAt: prev?.createdAt ?? new Date().toISOString(),
+  };
+  // An edit made before the first upload finished must still carry the file (queued edits are merged into one).
+  const fileQueued = await db.outbox.where('entityId').equals(doc.id)
+    .filter((o) => o.type === 'document.put' && o.state === 'pending' && !!(o.payload as { withFile?: boolean })?.withFile).count();
+  await db.documents.put({ ...doc, blob: d.file ? d.file.blob : prev?.blob, synced: false });
+  await enqueue({ type: 'document.put', entityId: doc.id, payload: { ...doc, withFile: !!d.file || fileQueued > 0 } }, true);
+  return doc;
+}
+
+export async function deleteDocument(d: SiteDocument) {
+  await db.documents.delete(d.id);
+  await enqueue({ type: 'document.put', entityId: d.id, payload: { ...d, deleted: true, withFile: false } }, true);
+}
+
+/** The document's file: from this device, or downloaded once and kept for offline use. */
+export async function documentBlob(d: SiteDocument): Promise<Blob> {
+  const local = await db.documents.get(d.id);
+  if (local?.blob) return local.blob;
+  const s = getSession();
+  const r = await fetch(`/api/documents/${d.id}`, { headers: s ? { Authorization: `Bearer ${s.token}` } : {} }).catch(() => null);
+  if (!r?.ok) throw new Error(navigator.onLine ? 'The file could not be opened. It may still be uploading from another phone.' : 'Connect to the internet once to open this file.');
+  const blob = await r.blob();
+  if (local) await db.documents.update(d.id, { blob });
+  return blob;
 }

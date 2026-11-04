@@ -37,6 +37,8 @@ export async function sendVisitMail(q: Queryable, visit: Visit, change: VisitCha
     `SELECT count(*) AS n FROM assets WHERE building_id = $1 AND status <> 'removed' AND (last_inspection_date IS NULL OR last_inspection_date < $2)`,
     [visit.buildingId, qStart])).rows[0]?.n ?? 0);
   const contact = (b.contacts ?? []).find((c) => c.phone) ?? (b.contacts ?? [])[0];
+  const po = (await q.query<{ number: string; doc_date: string | null }>(
+    `SELECT number, doc_date FROM documents WHERE building_id = $1 AND NOT deleted ORDER BY COALESCE(doc_date, '') DESC, created_at DESC LIMIT 1`, [visit.buildingId])).rows[0];
   const site = `${b.name}, ${b.city}`;
   const who = visit.inspector || 'Not decided yet';
   const link = `${config.appUrl}/sites/${visit.buildingId}`;
@@ -52,6 +54,7 @@ export async function sendVisitMail(q: Queryable, visit: Visit, change: VisitCha
     ['Inspector', who],
     ['Units to inspect', String(units)],
     ...(contact ? [['Site contact', [contact.name, contact.role, contact.phone].filter(Boolean).join(' · ')] as [string, string]] : []),
+    ...(po ? [['Purchase order', `${po.number}${po.doc_date ? ` (${formatDate(po.doc_date)})` : ''}`] as [string, string]] : []),
     ...(visit.note ? [['Note', visit.note] as [string, string]] : []),
     ['Planned by', byName],
   ];

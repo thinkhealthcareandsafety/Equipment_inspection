@@ -70,13 +70,13 @@ async function push() {
     // Photos travel one at a time to keep requests small on weak connections.
     const batch: OutboxOp[] = [];
     for (const op of ops) {
-      if (op.type === 'photo.put') { if (!batch.length) batch.push(op); break; }
+      if (op.type === 'photo.put' || (op.type === 'document.put' && (op.payload as { withFile?: boolean })?.withFile)) { if (!batch.length) batch.push(op); break; }
       batch.push(op);
       if (batch.length >= batchLimit) break;
     }
     const payloadOps = await Promise.all(batch.map(async (op) => ({
       opId: op.opId, type: op.type, clientAt: op.clientAt, offline: op.offline,
-      payload: op.type === 'photo.put' ? await photoPayload(op.entityId) : op.payload,
+      payload: op.type === 'photo.put' ? await photoPayload(op.entityId) : op.type === 'document.put' ? await documentPayload(op.payload as DocOp) : op.payload,
     })));
     let res: { results: { opId: string; ok: boolean; code?: string; error?: string; result?: any; current?: any }[] };
     try {
@@ -101,6 +101,11 @@ async function push() {
         if (op.type === 'asset.update' && r.result) await db.assets.put(r.result);
         if (op.type === 'visit.upsert' && r.result?.id) await db.visits.put(r.result);
         if (op.type === 'building.contacts' && r.result?.id) await db.buildings.put(r.result);
+        if (op.type === 'document.put' && r.result?.id) {
+          const local = await db.documents.get(r.result.id);
+          if (r.result.deleted) await db.documents.delete(r.result.id);
+          else await db.documents.put({ ...r.result, blob: local?.blob, synced: true });
+        }
       } else if (op.type === 'inspection.upsert' && r.current?.status === 'discarded') {
         progressed = true;
         await db.outbox.delete(op.seq!);
@@ -114,6 +119,22 @@ async function push() {
     }
     if (!progressed) return; // wait for the next trigger rather than spin
   }
+}
+
+type DocOp = { id: string; withFile?: boolean; [k: string]: unknown };
+/** The file travels with the op only when it is new; it is read from this device at send time. */
+async function documentPayload(p: DocOp) {
+  if (!p.withFile) return p;
+  const d = await db.documents.get(p.id);
+  if (!d?.blob) return { ...p, withFile: false };
+  return { ...p, data: await blobBase64(d.blob) };
+}
+
+async function blobBase64(blob: Blob) {
+  const buf = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 async function photoPayload(id: string) {
@@ -142,6 +163,7 @@ interface PullResponse {
   clients: any[]; buildings: any[]; floors: any[]; locations: any[]; assets: any[]; inspections: Inspection[];
   photos: any[]; templates: any[]; team: any[]; notifications: any[];
   visits?: any[];
+  documents?: any[];
 }
 
 async function pull() {
@@ -156,12 +178,18 @@ async function pull() {
 }
 
 async function applyPull(d: PullResponse) {
-  await db.transaction('rw', [db.clients, db.buildings, db.floors, db.locations, db.assets, db.inspections, db.photos, db.templates, db.team, db.notifications, db.visits, db.outbox, db.meta], async () => {
+  await db.transaction('rw', [db.clients, db.buildings, db.floors, db.locations, db.assets, db.inspections, db.photos, db.templates, db.team, db.notifications, db.visits, db.documents, db.outbox, db.meta], async () => {
     // Rows with queued local edits keep the local copy until the edit is acknowledged.
     const busy = new Set((await db.outbox.where('state').equals('pending').toArray()).map((o) => o.entityId));
     await db.clients.bulkPut(d.clients);
     await db.buildings.bulkPut(d.buildings.filter((b) => !busy.has(b.id)));
     await db.visits.bulkPut((d.visits ?? []).filter((v) => !busy.has(v.id)));
+    for (const doc of d.documents ?? []) {
+      if (busy.has(doc.id)) continue;
+      if (doc.deleted) { await db.documents.delete(doc.id); continue; }
+      const local = await db.documents.get(doc.id);
+      await db.documents.put({ ...doc, blob: local?.blob, synced: true });
+    }
     for (const f of d.floors) f.deleted ? await db.floors.delete(f.id) : await db.floors.put(f);
     for (const l of d.locations) l.deleted ? await db.locations.delete(l.id) : await db.locations.put(l);
     await db.assets.bulkPut(d.assets.filter((a) => !busy.has(a.id)));
