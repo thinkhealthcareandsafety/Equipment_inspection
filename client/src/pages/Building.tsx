@@ -156,27 +156,13 @@ export function BuildingPage() {
         </div>
       </Card>
 
-      {/* Floor selector */}
-      <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold text-slate-500">Floors</div>
-        {staff && <div className="flex gap-1">
-          <Button size="sm" variant="ghost" icon={<Layers className="h-4 w-4" />} onClick={() => setFloorsOpen(true)}>Add floors</Button>
-          <Button size="sm" variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setFloorEdit({ name: '' })}>One floor</Button>
-        </div>}
-      </div>
-      <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-        <Chip active={!floorSel} onClick={() => setFloor('')} count={assets.length}>All floors</Chip>
-        {floors.map((f) => <Chip key={f.id} active={floorSel === f.id} onClick={() => setFloor(f.id)} count={assets.filter((a) => a.floorId === f.id).length}>{f.name}</Chip>)}
-        {unassigned > 0 && <Chip active={floorSel === UNASSIGNED} onClick={() => setFloor(UNASSIGNED)} count={unassigned}>Unassigned</Chip>}
-      </div>
-
       {staff && floors.length === 0 && !floorsTipHidden && (
         <div data-floors-tip className="mb-4 flex items-center gap-1 rounded-2xl border border-dashed border-brand-300 bg-brand-50/60 pr-2 transition hover:bg-brand-50">
           <button type="button" onClick={() => setFloorsOpen(true)} className="flex min-w-0 flex-1 items-center gap-3 p-4 text-left">
             <Layers className="h-5 w-5 shrink-0 text-brand-600" />
             <span className="text-sm"><b className="text-slate-900">Add this site's floors</b><span className="block text-slate-600">One tap adds Ground to the top floor, so reports can show floor by floor.</span></span>
           </button>
-          <DismissButton onClick={hideFloorsTip} label="Hide this tip (Add floors stays above)" />
+          <DismissButton onClick={hideFloorsTip} label="Hide this tip (Add floors stays in the Floor menu)" />
         </div>
       )}
       {currentFloor && (
@@ -202,19 +188,34 @@ export function BuildingPage() {
         </div>
       )}
 
-      {/* Filters: search + one row of chips */}
-      <div className="mb-3 flex gap-2">
-        <SearchField id="site-search" className="flex-1 sm:max-w-xs" placeholder="Asset ID, make, serial" value={q} onChange={setQ} />
-        {staff && <Button variant={selecting ? 'dark' : 'secondary'} className="h-[46px]" icon={<SquareCheck className="h-4 w-4" />}
+      {/* One toolbar: search, what to show, type, floor */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <SearchField id="site-search" className="order-1 min-w-0 flex-1 sm:w-72 sm:flex-none" placeholder="Asset ID, make, serial" value={q} onChange={setQ} />
+        {staff && <Button variant={selecting ? 'dark' : 'secondary'} className="order-2 !h-11 sm:order-last sm:ml-auto" icon={<SquareCheck className="h-4 w-4" />}
           onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</Button>}
-      </div>
-      <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
-        <Chip active={due === 'todo'} onClick={() => setDue(due === 'todo' ? '' : 'todo')} count={kp.todo}>To inspect</Chip>
-        {kp.missing > 0 && <Chip active={due === 'missing'} onClick={() => setDue(due === 'missing' ? '' : 'missing')} count={kp.missing}>Missing details</Chip>}
-        {kp.oos > 0 && <Chip active={due === 'oos'} onClick={() => setDue(due === 'oos' ? '' : 'oos')} count={kp.oos}>Needs re-test</Chip>}
-        <span className="mx-1 w-px shrink-0 bg-slate-200" />
-        <Chip active={!type} onClick={() => setType('')}>All types</Chip>
-        {types.map((t) => <Chip key={t} active={type === t} onClick={() => setType(t)} count={assets.filter((a) => a.equipmentType === t).length}>{EQUIPMENT_LABELS[t]}</Chip>)}
+        <div className="order-3 grid w-full grid-cols-3 gap-2 sm:order-2 sm:flex sm:w-auto">
+          <div className="min-w-0 sm:w-48">
+            <Select ariaLabel="Show" className="!h-11 !py-0 !px-3 text-[15px] sm:!px-3.5" value={due} onChange={setDue}
+              options={[{ value: '', label: <>All units · {assets.length}</>, short: <>All {assets.length}</>, text: 'All units' }, { value: 'todo', label: <>To inspect · {kp.todo}</>, short: <>To do {kp.todo}</>, text: 'To inspect' },
+                ...(kp.missing ? [{ value: 'missing', label: <>Missing details · {kp.missing}</>, short: <>Missing {kp.missing}</>, text: 'Missing details' }] : []),
+                ...(kp.oos ? [{ value: 'oos', label: <>Needs re-test · {kp.oos}</>, short: <>Re-test {kp.oos}</>, text: 'Needs re-test' }] : [])]} />
+          </div>
+          <div className="min-w-0 sm:w-48">
+            <Select ariaLabel="Type" className="!h-11 !py-0 !px-3 text-[15px] sm:!px-3.5" value={type} onChange={(v) => setType(v as EquipmentType | '')}
+              options={[{ value: '', label: <>All types</>, short: <>Types</>, text: 'All types' }, ...types.map((t) => ({ value: t, label: `${EQUIPMENT_LABELS[t]} · ${assets.filter((a) => a.equipmentType === t).length}`, text: EQUIPMENT_LABELS[t] }))]} />
+          </div>
+          <div className="min-w-0 sm:w-48">
+            <Select ariaLabel="Floor" className="!h-11 !py-0 !px-3 text-[15px] sm:!px-3.5" value={floorSel} onChange={setFloor}
+              options={[{ value: '', label: <>All floors</>, short: <>Floors</>, text: 'All floors' }, ...floors.map((f) => ({ value: f.id, label: `${f.name} · ${assets.filter((a) => a.floorId === f.id).length}`, text: f.name })),
+                ...(unassigned ? [{ value: UNASSIGNED, label: `No floor yet · ${unassigned}`, text: 'No floor yet' }] : [])]}
+              footer={staff ? (close) => (
+                <div className="flex">
+                  <button type="button" onClick={() => { close(); setFloorsOpen(true); }} className="flex min-h-[44px] flex-1 items-center gap-2 rounded-[10px] px-3 text-[15px] font-semibold text-brand-700 hover:bg-brand-500/[.08]"><Layers className="h-4 w-4" />Add floors</button>
+                  <button type="button" onClick={() => { close(); setFloorEdit({ name: '' }); }} className="flex min-h-[44px] flex-1 items-center gap-2 rounded-[10px] px-3 text-[15px] font-semibold text-brand-700 hover:bg-brand-500/[.08]"><Plus className="h-4 w-4" />One floor</button>
+                </div>
+              ) : undefined} />
+          </div>
+        </div>
       </div>
 
       <Card className="overflow-hidden">

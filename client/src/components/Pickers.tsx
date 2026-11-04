@@ -12,7 +12,8 @@ import { cx, haptic } from './ui.tsx';
 // ---------- shared popover placement ----------
 
 function usePopover(open: boolean, anchor: React.RefObject<HTMLElement | null>, opts: { width?: number; maxHeight: number }) {
-  const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' });
+  // Fixed from the first frame, so the panel never sits at the end of the page (which would make the page jump).
+  const [style, setStyle] = useState<CSSProperties>({ position: 'fixed', top: 0, left: 0, visibility: 'hidden' });
   const place = useCallback(() => {
     const el = anchor.current;
     if (!el) return;
@@ -50,7 +51,8 @@ const PANEL = 'animate-pop z-[70] overflow-hidden rounded-[16px] bg-white shadow
 
 // ---------- Select ----------
 
-export interface SelectOption<T extends string = string> { value: T; label: ReactNode; hint?: ReactNode; text?: string; disabled?: boolean }
+/** `short` is what the closed field shows on a phone, when the full label would not fit. */
+export interface SelectOption<T extends string = string> { value: T; label: ReactNode; short?: ReactNode; hint?: ReactNode; text?: string; disabled?: boolean }
 
 export function Select<T extends string = string>({ value, onChange, options, placeholder = 'Choose…', disabled, error, id, ariaLabel, footer, className }: {
   value: T; onChange: (v: T) => void; options: SelectOption<T>[]; placeholder?: string; disabled?: boolean; error?: boolean; id?: string;
@@ -74,7 +76,15 @@ export function Select<T extends string = string>({ value, onChange, options, pl
     setOpen(true);
   };
   const pick = (o: SelectOption<T>) => { if (o.disabled) return; haptic(); onChange(o.value); setOpen(false); btn.current?.focus(); };
-  useEffect(() => { if (open) panel.current?.querySelector<HTMLElement>(`[data-i="${active}"]`)?.scrollIntoView({ block: 'nearest' }); }, [open, active]);
+  // Keep the highlighted option in view by scrolling the list itself, never the page.
+  useEffect(() => {
+    if (!open) return;
+    const list = panel.current?.querySelector<HTMLElement>('[role=listbox]');
+    const el = list?.querySelector<HTMLElement>(`[data-i="${active}"]`);
+    if (!list || !el) return;
+    if (el.offsetTop < list.scrollTop) list.scrollTop = el.offsetTop - 6;
+    else if (el.offsetTop + el.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = el.offsetTop + el.offsetHeight - list.clientHeight + 6;
+  }, [open, active]);
 
   const step = (from: number, by: number) => {
     for (let i = 1; i <= options.length; i++) {
@@ -107,12 +117,12 @@ export function Select<T extends string = string>({ value, onChange, options, pl
       <button ref={btn} id={id} type="button" disabled={disabled} onClick={() => (open ? setOpen(false) : openList())} onKeyDown={onKey}
         aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined} aria-label={ariaLabel}
         className={cx('input flex items-center gap-2 text-left', error && 'input-error', open && '!shadow-[inset_0_0_0_1.5px_var(--color-brand-500),0_0_0_4px_color-mix(in_srgb,var(--color-brand-500)_18%,transparent)]', disabled && 'cursor-not-allowed', className)}>
-        <span className={cx('min-w-0 flex-1 truncate', !sel && 'text-slate-400')}>{sel ? sel.label : placeholder}</span>
+        <span className={cx('min-w-0 flex-1 truncate', !sel && 'text-slate-400')}>{sel ? (sel.short != null ? <><span className="sm:hidden">{sel.short}</span><span className="hidden sm:inline">{sel.label}</span></> : sel.label) : placeholder}</span>
         <ChevronDown className={cx('h-[18px] w-[18px] shrink-0 text-slate-400 transition-transform duration-200', open && 'rotate-180')} />
       </button>
       {open && createPortal(
         <div ref={panel} className={cx(PANEL, 'flex flex-col')} style={style} onKeyDown={onKey}>
-          <div id={listId} role="listbox" aria-label={ariaLabel} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
+          <div id={listId} role="listbox" aria-label={ariaLabel} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
             {options.map((o, i) => {
               const on = o.value === value;
               return (
