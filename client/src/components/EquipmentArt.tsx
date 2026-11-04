@@ -1,8 +1,11 @@
 /**
- * Drawn pictures of the three products, used wherever a unit appears. Each sits on its own soft tile so the
+ * Pictures of the three products, used wherever a unit appears. The pictures are studio renders of 3D models
+ * built to real proportions (public/equipment/*.png, cached for offline use); the drawn SVGs below are the
+ * fallback if an image cannot load. Each sits on its own soft tile so the
  * type reads at a glance (blue wheelchair, red scoop, green foldable), and a red or amber tile with a mark
  * says the unit has a problem. Pure SVG: crisp at any size, works offline, no image downloads.
  */
+import { useState } from 'react';
 import type { EquipmentType } from '@think/shared';
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ');
@@ -118,14 +121,20 @@ const TILE: Record<EquipmentType, string> = {
 /** The product picture on its tile. `size` in px; `tone` red/amber marks a unit that must not be used / needs a re-test. */
 export function EquipmentArt({ type, size = 44, tone = 'default', className }: { type: EquipmentType; size?: number; tone?: 'default' | 'red' | 'amber'; className?: string }) {
   const radius = Math.round(size * 0.26);
+  const [failed, setFailed] = useState(false);
   return (
     <div className={cx('relative shrink-0', className)} style={{ width: size, height: size }}>
       <div className={cx('h-full w-full overflow-hidden shadow-[inset_0_0_0_0.5px_rgb(0_0_0/0.06)]',
         tone === 'red' ? 'bg-[linear-gradient(160deg,#fff1f0,#ffdcd9)]' : tone === 'amber' ? 'bg-[linear-gradient(160deg,#fff8eb,#ffe9c2)]' : TILE[type])}
         style={{ borderRadius: radius }}>
-        <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
-          {type === 'wheelchair' ? <Wheelchair /> : type === 'scoop_stretcher' ? <ScoopStretcher /> : <FoldingStretcher />}
-        </svg>
+        {failed ? (
+          <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
+            {type === 'wheelchair' ? <Wheelchair /> : type === 'scoop_stretcher' ? <ScoopStretcher /> : <FoldingStretcher />}
+          </svg>
+        ) : (
+          <img src={`${import.meta.env.BASE_URL}equipment/${type}.png`} alt="" width={size} height={size} draggable={false} decoding="async"
+            onError={() => setFailed(true)} className="pointer-events-none h-full w-full select-none object-contain p-[2%]" />
+        )}
       </div>
       {tone !== 'default' && (
         <span className={cx('absolute -right-1 -top-1 grid place-items-center rounded-full font-bold text-white ring-2 ring-white',

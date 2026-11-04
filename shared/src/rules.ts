@@ -170,6 +170,17 @@ export function validateInspection(t: ChecklistTemplate, insp: Inspection, forSu
 
 export const blocking = (issues: Issue[]) => issues.filter((i) => i.severity === 'error');
 
+/** Details the certificate prints that this unit's record still lacks, in plain words. */
+export function missingDetails(a: Pick<Asset, 'manufacturer' | 'model' | 'serialNumber' | 'floorId' | 'installDate'>): string[] {
+  const out: string[] = [];
+  if (!a.manufacturer) out.push('make');
+  if (!a.model) out.push('model');
+  if (!a.serialNumber) out.push('serial no.');
+  if (!a.floorId) out.push('floor');
+  if (!a.installDate) out.push('purchase date');
+  return out;
+}
+
 /**
  * Inspections are quarterly (financial-year quarters): a unit inspected any day in Q3 is next due in Q4,
  * by Q4's last day. The template's intervalDays is kept for reference only.

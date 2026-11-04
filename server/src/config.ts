@@ -11,6 +11,8 @@ export const config = {
   accessCode: env.ACCESS_CODE ?? '9999',
   smtpUrl: env.SMTP_URL ?? '', // e.g. smtps://user:pass@smtp.zoho.in:465
   mailFrom: env.MAIL_FROM ?? 'Think Healthcare and Safety <no-reply@example.com>',
+  // Links in emails point here.
+  appUrl: (env.APP_URL ?? 'https://equipmentinspection.vercel.app').replace(/\/$/, ''),
   reminderCron: env.REMINDER_CRON ?? '30 8 * * *', // 08:30 daily
   timezone: env.TZ_NAME ?? 'Asia/Kolkata',
   reminderTo: (env.REMINDER_TO ?? '').split(',').map((x) => x.trim()).filter(Boolean), // who receives the daily reminder email

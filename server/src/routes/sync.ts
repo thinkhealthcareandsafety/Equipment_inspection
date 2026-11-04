@@ -5,6 +5,7 @@ import { audit, getDb, type Queryable } from '../db.ts';
 import { isStaff, requireAuth, scope, type AuthUser } from '../lib/auth.ts';
 import { toAsset, toBuilding, toClient, toFloor, toInspection, toLocation, toTeam, toVisit } from '../lib/mappers.ts';
 import { OpError, upsertInspection } from '../services/inspections.ts';
+import { sendVisitMail, type VisitChange } from '../services/visitMail.ts';
 
 export const sync = Router();
 sync.use(requireAuth);
@@ -92,16 +93,19 @@ sync.post('/push', async (req, res) => {
   if (!isStaff(u)) return res.status(403).json({ error: 'Read-only access' });
   const db = await getDb();
   const results = [];
+  const afterCommit: (() => Promise<unknown>)[] = [];
   for (const op of parsed.data.ops) {
     const meta = { deviceId: parsed.data.deviceId ?? null, clientAt: op.clientAt ?? null, offline: op.offline ?? false };
+    const post: (() => Promise<unknown>)[] = [];
     try {
       const out = await db.tx(async (q) => {
         const done = await q.query<{ result: unknown }>('SELECT result FROM sync_ops WHERE op_id = $1', [op.opId]);
-        if (done.rows.length) return done.rows[0].result;
-        const r = await apply(q, u, op.type, op.payload, meta);
+        if (done.rows.length) return done.rows[0].result; // already applied: nothing is sent twice
+        const r = await apply(q, u, op.type, op.payload, meta, post);
         await q.query('INSERT INTO sync_ops (op_id, user_id, result) VALUES ($1,$2,$3)', [op.opId, u.id, JSON.stringify(r)]);
         return r;
       });
+      afterCommit.push(...post);
       results.push({ opId: op.opId, ok: true, result: out });
     } catch (e) {
       const err = e as OpError;
@@ -109,12 +113,14 @@ sync.post('/push', async (req, res) => {
       if (!(e instanceof OpError)) console.error('[sync]', op.type, e);
     }
   }
+  // Emails go out after the change is saved; a slow or failing mail server never blocks or fails the sync.
+  if (afterCommit.length) await Promise.race([Promise.allSettled(afterCommit.map((f) => f())), new Promise((r) => setTimeout(r, 9000))]);
   res.json({ results });
 });
 
 type Meta = { deviceId: string | null; clientAt: string | null; offline: boolean };
 
-async function apply(q: Queryable, u: AuthUser, type: string, p: any, meta: Meta): Promise<unknown> {
+async function apply(q: Queryable, u: AuthUser, type: string, p: any, meta: Meta, post: (() => Promise<unknown>)[] = []): Promise<unknown> {
   switch (type) {
     case 'inspection.upsert':
       return upsertInspection(q, u, p.inspection as Inspection, p.baseRev ?? null, meta);
@@ -208,7 +214,25 @@ async function apply(q: Queryable, u: AuthUser, type: string, p: any, meta: Meta
         [p.id, b.client_id, p.buildingId, p.date, clip(p.inspector, 80), clip(p.note, 500), status, u.id, clip(p.createdByName || u.name, 80)]);
       await audit(q, { user: u, action: !prev ? 'visit.plan' : status === 'cancelled' ? 'visit.cancel' : 'visit.update', entityType: 'visit',
         entityId: p.id, clientId: b.client_id, changes: { site: p.buildingId, date: p.date, inspector: p.inspector, before: prev ? toVisit(prev) : null }, ...meta });
-      return toVisit((await q.query('SELECT * FROM visits WHERE id = $1', [p.id])).rows[0]);
+      const saved = toVisit((await q.query('SELECT * FROM visits WHERE id = $1', [p.id])).rows[0]);
+      const before = prev ? toVisit(prev) : null;
+      const change: VisitChange | null = !before ? (status === 'planned' ? 'planned' : null)
+        : status === 'cancelled' ? (before.status === 'planned' ? 'cancelled' : null)
+        : before.status === 'cancelled' ? 'planned'
+        : before.date !== saved.date || before.inspector !== saved.inspector ? 'changed' : null;
+      if (change) {
+        post.push(async () => {
+          const db = await getDb();
+          try {
+            const r = await sendVisitMail(db, saved, change, before, u.name);
+            await audit(db, { user: u, action: r.sent ? 'visit.email' : 'visit.email_skipped', entityType: 'visit', entityId: saved.id, clientId: saved.clientId, changes: { change, ...r } });
+          } catch (e) {
+            console.error('[mail] visit', saved.id, e);
+            await audit(db, { user: u, action: 'visit.email_failed', entityType: 'visit', entityId: saved.id, clientId: saved.clientId, changes: { change, error: String((e as Error).message ?? e) } }).catch(() => undefined);
+          }
+        });
+      }
+      return saved;
     }
 
     case 'building.contacts': {

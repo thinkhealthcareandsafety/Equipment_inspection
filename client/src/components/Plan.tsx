@@ -3,12 +3,12 @@
  * Both are shared with everyone through the normal offline sync.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CalendarCheck2, Check, MessageCircle, Pencil, Phone, Plus, Trash2, UserRound } from 'lucide-react';
+import { CalendarCheck2, Check, Mail, MessageCircle, Pencil, Phone, Plus, Trash2, UserRound } from 'lucide-react';
 import {
   addDays, dayLabel, formatDate, quarterName, quarterOf, shiftQuarter, todayISO, uuid, weekday,
   type Building, type SiteContact, type Visit,
 } from '@think/shared';
-import { useTeam, useUser } from '../lib/hooks.ts';
+import { useServerInfo, useTeam, useUser } from '../lib/hooks.ts';
 import { cancelVisit, saveSiteContacts, saveVisit } from '../lib/store.ts';
 import { Button, cx, Field, haptic, Sheet, useToast } from './ui.tsx';
 import { useDialogs } from './Dialogs.tsx';
@@ -62,6 +62,15 @@ export function ScheduleSheet({ open, onClose, building, visit, left, onSaved }:
   const inNext = date && date > q.to;
   const valid = !!date && date >= today && date <= last;
   const contact = building.contacts?.[0];
+  const info = useServerInfo();
+  const first = (n: string) => n.split(' ')[0];
+  const withEmail = team.filter((m) => m.email);
+  const going = withEmail.find((m) => m.name === inspector);
+  const others = withEmail.filter((m) => m !== going);
+  const mailLine = !withEmail.length ? null
+    : info?.mail === false ? 'Visit emails start once the office mailbox is connected.'
+    : going ? `Emails ${going.name}${others.length ? `, copy to ${others.map((m) => first(m.name)).join(', ')}` : ''}, with a calendar invite.`
+    : `Emails the team (${withEmail.map((m) => first(m.name)).join(', ')}) with a calendar invite.`;
 
   const save = async () => {
     if (!valid) return;
@@ -125,6 +134,10 @@ export function ScheduleSheet({ open, onClose, building, visit, left, onSaved }:
           <textarea className="input min-h-[72px] resize-y" maxLength={500} placeholder="e.g. Report to the security desk, ask for the facility team" value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
       </div>
+
+      {mailLine && (
+        <p data-mail-line className="mt-4 flex items-start gap-2 text-[14px] leading-snug text-slate-500"><Mail className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />{mailLine}</p>
+      )}
 
       {contact && (
         <div className="mt-5 flex items-center gap-3 rounded-[16px] bg-black/[.035] p-3">

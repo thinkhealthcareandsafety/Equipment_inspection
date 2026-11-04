@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { CalendarClock, CircleCheck, ClipboardCheck, Database, Factory, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
+import { CalendarClock, CircleAlert, CircleCheck, ClipboardCheck, Database, Factory, FileText, Pencil, Printer, ShieldAlert, TriangleAlert } from 'lucide-react';
 import {
-  DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, quarterLock, quarterName, quarterOf, todayISO, type Asset, type Building,
+  DATA_FLAG_LABELS, EQUIPMENT_LABELS, formatDate, missingDetails, quarterLock, quarterName, quarterOf, todayISO, type Asset, type Building, type DataFlag,
 } from '@think/shared';
 import { downloadQrLabels, qrDataUrl, unitUrl } from '../lib/qr.ts';
 import { rememberUnit } from '../lib/search.ts';
@@ -52,7 +52,10 @@ export function AssetPage() {
     } catch (e) { toast((e as Error).message, 'err'); }
   };
   const make = asset.manufacturer ?? (asset.candidateMakes.length ? `${asset.candidateMakes.join(' or ')} (to confirm)` : null);
-  const flags = asset.dataFlags.filter((f) => f !== 'SERIAL_MISSING' || !asset.serialNumber);
+  const missing = missingDetails(asset);
+  // Inventory notes that are not simply an empty field (those are listed in the "missing" panel).
+  const NOTE_FLAGS: DataFlag[] = ['MAKE_AMBIGUOUS', 'AGE_ESTIMATED', 'AGE_AMBIGUOUS', 'TYPE_INFERRED', 'QTY_RECONCILED', 'TAKEN_FOR_REPLACEMENT'];
+  const flags = asset.dataFlags.filter((f) => NOTE_FLAGS.includes(f));
 
   return (
     <>
@@ -65,8 +68,8 @@ export function AssetPage() {
           </span>
         </span>}
         subtitle={<span className="mt-1 flex flex-col gap-2.5">
-          <span className={make ? 'flex items-start gap-2 text-[17px] font-semibold leading-snug text-slate-900' : 'text-[16px] italic text-slate-400'}>
-            {make && <Factory className="mt-1 h-4 w-4 shrink-0 text-brand-600" strokeWidth={2.2} />}{make ?? 'Make not recorded'}
+          <span className={make ? 'flex items-start gap-2 text-[17px] font-semibold leading-snug text-slate-900' : 'flex items-center gap-2 text-[16px] font-semibold text-amber-700'}>
+            {make ? <Factory className="mt-1 h-4 w-4 shrink-0 text-brand-600" strokeWidth={2.2} /> : <CircleAlert className="h-4 w-4 shrink-0" />}{make ?? 'Make not recorded'}
           </span>
           <span className="flex flex-wrap items-center gap-2"><AssetStatusBadge status={asset.status} /><QuarterBadge asset={asset} /></span>
         </span>}
@@ -81,6 +84,19 @@ export function AssetPage() {
             <div className="text-[15px] text-emerald-900/75">Inspected {formatDate(lock.lastDate)}{lastSigned?.header.technician ? ` by ${lastSigned.header.technician}` : ''}. The {quarterName(lock.opens)} inspection opens on {formatDate(lock.opens.from)}.</div>
           </div>
           {lastSigned && <Button size="sm" icon={<FileText className="h-4 w-4" />} onClick={() => downloadInspectionPack(lastSigned.id).catch((e) => toast(e.message, 'err'))}>Certificate</Button>}
+        </div>
+      )}
+
+      {missing.length > 0 && (
+        <div data-missing-panel className="mb-6 flex flex-col gap-3 rounded-[20px] bg-amber-500/[.1] p-4 ring-1 ring-amber-500/25 sm:flex-row sm:items-center sm:p-5">
+          <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+          <CircleAlert className="mt-0.5 h-7 w-7 shrink-0 text-amber-600 sm:mt-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[17px] font-semibold text-amber-900">{missing.length} {missing.length === 1 ? 'detail is' : 'details are'} missing</div>
+            <div className="text-[15px] text-amber-900/80">Add the {missing.join(', ')} so the certificate is complete. Check the label on the unit.</div>
+          </div>
+          </div>
+          {can.manageSites(user.role) && <Button variant="primary" className="w-full !bg-amber-600 active:!bg-amber-700 sm:w-auto" icon={<Pencil className="h-4 w-4" />} onClick={() => setEdit(true)}>Fill in now</Button>}
         </div>
       )}
 
@@ -149,8 +165,8 @@ export function AssetPage() {
           {building && <QrCard asset={asset} building={building} onError={(m) => toast(m, 'err')} />}
           {flags.length > 0 && (
             <Card className="p-5">
-              <div className="mb-1 font-semibold">Record completeness</div>
-              <div className="mb-3 text-sm text-slate-500">Imported from the inventory with gaps. Fill them in on site.</div>
+              <div className="mb-1 font-semibold">Inventory notes</div>
+              <div className="mb-3 text-sm text-slate-500">How this unit was read from the inventory sheet.</div>
               <ul className="space-y-2">{flags.map((f) => <li key={f} className="flex items-center gap-2 text-sm"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />{DATA_FLAG_LABELS[f]}</li>)}</ul>
             </Card>
           )}
@@ -190,7 +206,7 @@ function QrCard({ asset, building, onError }: { asset: Asset; building: Building
 }
 
 function Item({ k, v }: { k: string; v: string | null | undefined }) {
-  return <div><dt className="text-xs text-slate-500">{k}</dt><dd className={v ? 'mt-0.5 font-medium' : 'mt-0.5 text-slate-400'}>{v || 'Not recorded'}</dd></div>;
+  return <div><dt className="text-xs text-slate-500">{k}</dt><dd className={v ? 'mt-0.5 font-medium' : 'mt-0.5 font-medium text-amber-700'}>{v || 'Missing'}</dd></div>;
 }
 
 function EditAsset({ open, onClose, asset, floors, locations, onSaved }: { open: boolean; onClose: () => void; asset: Asset; floors: { id: string; name: string }[]; locations: { id: string; floorId: string; name: string }[]; onSaved: () => void }) {

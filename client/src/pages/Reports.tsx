@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { ArrowRight, Check, ChevronDown, ChevronRight, ClipboardCheck, FileSpreadsheet, FileText, Layers, MapPin, X } from 'lucide-react';
-import { EQUIPMENT_LABELS, formatDate, fyLabel, quarterFromKey, quarterLabel, quarterName, quarterOf, shiftQuarter, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
+import { EQUIPMENT_LABELS, formatDate, fyLabel, missingDetails, quarterFromKey, quarterLabel, quarterName, quarterOf, shiftQuarter, STATUS_LABELS, todayISO, type EquipmentType } from '@think/shared';
 import { useAllData, useUser } from '../lib/hooks.ts';
 import { buildReport, download, EMPTY_FILTERS, periodLabel, toCSV, type GroupBy, type Period, type ReportFilters } from '../lib/reports.ts';
 import { summaryReport } from '../lib/pdf.ts';
@@ -13,7 +13,7 @@ import { saveFile } from '../lib/files.ts';
 import { ASSET_STATUS, AssetStatusBadge, Badge, Bar, Button, Card, cx, Empty, EquipmentAvatar, InspectionStatusBadge, QuarterBadge, SearchField, Segmented, Sheet, useToast } from '../components/ui.tsx';
 import { Skeleton } from './Dashboard.tsx';
 
-type View = 'summary' | 'due' | 'oos' | 'defects' | 'done';
+type View = 'summary' | 'due' | 'oos' | 'defects' | 'done' | 'missing';
 const PERIODS: Period[] = ['quarter', 'last_quarter', 'year', 'all'];
 const NOW = quarterOf();
 const PERIOD_SHORT: Record<Period, string> = {
@@ -52,6 +52,7 @@ export function Reports() {
   const place = floorId ? `${bById.get(buildingId)?.name} · ${floorName(floorId)}` : buildingId ? `${bById.get(buildingId)?.name}, ${bById.get(buildingId)?.city}` : city || 'All sites';
   const done = [...report.inspections].sort((a, b) => b.header.inspectionDate.localeCompare(a.header.inspectionDate));
   const oos = report.assets.filter((a) => a.status === 'out_of_service');
+  const incomplete = report.assets.filter((a) => missingDetails(a).length > 0);
   const pctDone = k.assets ? Math.round((k.inDate / k.assets) * 100) : 0;
   const qn = quarterName(report.quarter);
   const closed = report.closed;
@@ -77,6 +78,8 @@ export function Reports() {
       : view === 'due' ? [['Asset', 'Type', 'Make', 'Site', 'Floor', 'Last inspected', 'Status'],
         ...report.toInspect.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], a.manufacturer ?? '', site(a.buildingId), a.floorId ? floorName(a.floorId) : '', a.lastInspectionDate,
           closed ? `Missed in ${qn}` : a.status === 'out_of_service' ? 'Do not use' : `To do in ${qn}`])]
+      : view === 'missing' ? [['Asset', 'Type', 'Site', 'Floor', 'Make', 'Model', 'Serial number', 'Purchase date', 'Missing'],
+        ...incomplete.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], site(a.buildingId), a.floorId ? floorName(a.floorId) : '', a.manufacturer ?? '', a.model ?? '', a.serialNumber ?? '', a.installDate ?? '', missingDetails(a).join(', ')])]
       : view === 'oos' ? [['Asset', 'Type', 'Site', 'Status', 'Reason'], ...oos.map((a) => [a.assetTag, EQUIPMENT_LABELS[a.equipmentType], site(a.buildingId), ASSET_STATUS[a.status].label, a.statusReason])]
       : view === 'defects' ? [['Asset', 'Site', 'Check', 'Safety-critical', 'Remark', 'Corrective action', 'Raised'],
         ...report.defects.map((d) => [d.asset.assetTag, site(d.asset.buildingId), `${d.checkNo === 'TEST' ? 'Load test' : `#${d.checkNo}`} ${d.label}`, d.safetyCritical ? 'Yes' : 'No', d.remark, d.correctiveActionRef, d.raisedAt])]
@@ -95,6 +98,7 @@ export function Reports() {
     { id: 'oos', label: 'Do not use', n: oos.length, tone: oos.length ? 'text-rose-600' : '' },
     { id: 'defects', label: 'Problems found', n: report.defects.length, tone: report.defects.length ? 'text-rose-600' : '' },
     { id: 'done', label: 'Inspections done', n: done.length },
+    { id: 'missing', label: 'Missing details', n: incomplete.length, tone: incomplete.length ? 'text-amber-700' : '' },
   ];
 
   const ringPct = pctDone;
@@ -232,6 +236,8 @@ export function Reports() {
         ))}
 
         {view === 'due' && <AssetList assets={report.toInspect} empty={`Every unit here is done for ${qn}`} right={(a) => closed ? <Badge tone="red">Missed</Badge> : <QuarterBadge asset={a} />} sub={(a) => `${bById.get(a.buildingId)?.name}${a.floorId ? ` · ${floorName(a.floorId)}` : ''} · ${a.lastInspectionDate ? `last ${formatDate(a.lastInspectionDate)}` : 'never inspected'}`} />}
+        {view === 'missing' && <AssetList assets={incomplete} empty="Every unit's record is complete" right={(a) => <Badge tone="amber">{missingDetails(a).length} missing</Badge>}
+          sub={(a) => `${bById.get(a.buildingId)?.name} · Missing: ${missingDetails(a).join(', ')}`} />}
         {view === 'oos' && <AssetList assets={oos} empty="Every unit can be used" right={(a) => <AssetStatusBadge status={a.status} />} sub={(a) => `${bById.get(a.buildingId)?.name} · ${a.statusReason ?? ''}`} />}
 
         {view === 'defects' && (report.defects.length === 0 ? <Empty title="No open problems" /> : (

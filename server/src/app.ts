@@ -14,7 +14,7 @@ export function createApp() {
   app.use(cors());
   app.use(express.json({ limit: '25mb' })); // photo uploads arrive base64-encoded in sync batches
 
-  app.get('/api/health', (_req, res) => res.json({ ok: true, db: config.databaseUrl ? 'postgres' : 'pglite', env: process.env.VERCEL_ENV ?? 'local' }));
+  app.get('/api/health', (_req, res) => res.json({ ok: true, db: config.databaseUrl ? 'postgres' : 'pglite', env: process.env.VERCEL_ENV ?? 'local', mail: !!config.smtpUrl }));
 
   // Called daily by the host's scheduler (Vercel Cron sends `Authorization: Bearer $CRON_SECRET`).
   app.get('/api/cron/reminders', async (req, res) => {

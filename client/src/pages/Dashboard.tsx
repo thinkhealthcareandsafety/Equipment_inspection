@@ -7,9 +7,9 @@
  */
 import { useMemo, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
-import { Archive, Building2, CalendarDays, CalendarPlus, ChevronRight, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
+import { Archive, Building2, CalendarDays, CalendarPlus, ChevronRight, CircleAlert, ClipboardCheck, LifeBuoy, PenLine, ScanLine, ShieldAlert } from 'lucide-react';
 import {
-  addDays, dayLabel, daysLeftIn, diffDays, EQUIPMENT_LABELS, formatDate, fyLabel, inQuarter, isMine, isOpen, pastQuarters, quarterElapsed,
+  addDays, dayLabel, daysLeftIn, diffDays, EQUIPMENT_LABELS, formatDate, fyLabel, inQuarter, isMine, isOpen, missingDetails, pastQuarters, quarterElapsed,
   quarterLabel, quarterLength, quarterName, quarterOf, shiftQuarter, todayISO, weekday, type Quarter,
 } from '@think/shared';
 import { can, useAllData, useUser } from '../lib/hooks.ts';
@@ -118,7 +118,8 @@ function ThisQuarter({ data, report, byCity }: { data: AllData; report: Report; 
   }, new Map<string, { name: string; count: number; fails: number }>()).values()].sort((a, b) => b.count - a.count);
 
   const closing = closingSoon(report);
-  const attention = reviewQueue.length + mine.length + outList.length + (closing ? 1 : 0);
+  const incomplete = report.assets.filter((a) => missingDetails(a).length > 0).length;
+  const attention = reviewQueue.length + mine.length + outList.length + (closing ? 1 : 0) + (incomplete ? 1 : 0);
   const pct = total ? Math.round(share * 100) : 0;
 
   const withDefects = report.assets.filter((a) => a.openDefects.length > 0).length;
@@ -214,6 +215,8 @@ function ThisQuarter({ data, report, byCity }: { data: AllData; report: Report; 
                       sub={`${EQUIPMENT_LABELS[a.equipmentType]} · ${bById.get(a.buildingId)?.name}, ${bById.get(a.buildingId)?.city} · ${a.statusReason ?? 'Out of service'}`} />
                   ))}
                   {outList.length > 4 && <Row to="/reports?view=oos" tone="red" icon={<ShieldAlert className="h-5 w-5" />} title={`${outList.length - 4} more out of service`} sub="See the full list" />}
+                  {incomplete > 0 && <Row to="/reports?view=missing" tone="amber" icon={<CircleAlert className="h-5 w-5" />}
+                    title={`${incomplete} of ${total} units are missing details`} sub="Make, model, serial number, floor or purchase date. Fill them in on site." />}
                 </div>
               </Card>
             </section>

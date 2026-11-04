@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { CalendarPlus, Check, ChevronRight, ClipboardCheck, Factory, Layers, MapPin, Pencil, Plus, Printer, SquareCheck, Trash2, X } from 'lucide-react';
+import { CalendarPlus, Check, ChevronRight, CircleAlert, ClipboardCheck, Factory, Layers, MapPin, Pencil, Plus, Printer, SquareCheck, Trash2, X } from 'lucide-react';
 import { downloadQrLabels } from '../lib/qr.ts';
 import {
-  dayLabel, daysLeftIn, EQUIPMENT_LABELS, formatDate, needsInspection, quarterLabel, quarterLock, quarterName, quarterOf, type Asset, type EquipmentType,
+  dayLabel, daysLeftIn, EQUIPMENT_LABELS, formatDate, missingDetails, needsInspection, quarterLabel, quarterLock, quarterName, quarterOf, type Asset, type EquipmentType,
 } from '@think/shared';
 import { db } from '../lib/db.ts';
 import { can, useUser } from '../lib/hooks.ts';
@@ -56,7 +56,9 @@ export function BuildingPage() {
     return data.assets.filter((a) => {
       if (floorSel === UNASSIGNED ? a.floorId : floorSel && a.floorId !== floorSel) return false;
       if (type && a.equipmentType !== type) return false;
-      if (due && (due === 'oos' ? a.status === 'in_service' : !needsInspection(a))) return false;
+      if (due === 'oos' && a.status === 'in_service') return false;
+      if (due === 'todo' && !needsInspection(a)) return false;
+      if (due === 'missing' && !missingDetails(a).length) return false;
       if (q && !textMatches(q, a.assetTag, a.manufacturer, a.model, a.serialNumber, EQUIPMENT_LABELS[a.equipmentType])) return false;
       return true;
     }).sort((a, b) => a.assetTag.localeCompare(b.assetTag, undefined, { numeric: true }));
@@ -74,6 +76,7 @@ export function BuildingPage() {
   const kp = {
     oos: assets.filter((a) => a.status !== 'in_service').length,
     todo: assets.filter((a) => needsInspection(a)).length,
+    missing: assets.filter((a) => missingDetails(a).length > 0).length,
   };
   const doneQ = assets.length - kp.todo;
   const visit = nextVisit(data.visits, buildingId);
@@ -110,6 +113,11 @@ export function BuildingPage() {
           <div className="flex items-baseline gap-1.5"><span className="text-[26px] font-bold leading-none tracking-[-0.02em] tabular">{doneQ}</span><span className="text-[15px] text-slate-500">of {assets.length} done</span></div>
           <div className="mt-2.5"><Bar value={assets.length ? (doneQ / assets.length) * 100 : 0} tone="brand" /></div>
           <div className="mt-2 text-[13px] text-slate-500">{kp.todo === 0 ? `Every unit is done for ${quarterName(quarter)}` : `${kp.todo} to inspect · ${daysLeftIn(quarter)} days left`}</div>
+          {kp.missing > 0 && (
+            <button type="button" data-missing-link onClick={() => setDue(due === 'missing' ? '' : 'missing')} className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold text-amber-700 hover:underline">
+              <CircleAlert className="h-3.5 w-3.5" />{kp.missing} {kp.missing === 1 ? 'unit is' : 'units are'} missing details
+            </button>
+          )}
         </div>
         <div className="border-t-[0.5px] border-black/10 p-4 sm:p-5 md:border-l-[0.5px] md:border-t-0">
           <div className="mb-2.5 text-[13px] font-semibold text-slate-500">Site contact</div>
@@ -193,7 +201,8 @@ export function BuildingPage() {
           onClick={() => { setSelecting(!selecting); setSelected(new Set()); }}>{selecting ? 'Done' : 'Select'}</Button>}
       </div>
       <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
-        <Chip active={due === 'todo'} onClick={() => setDue(due === 'todo' ? '' : 'todo')} count={kp.todo}>To inspect in {quarterName(quarter)}</Chip>
+        <Chip active={due === 'todo'} onClick={() => setDue(due === 'todo' ? '' : 'todo')} count={kp.todo}>To inspect</Chip>
+        {kp.missing > 0 && <Chip active={due === 'missing'} onClick={() => setDue(due === 'missing' ? '' : 'missing')} count={kp.missing}>Missing details</Chip>}
         {kp.oos > 0 && <Chip active={due === 'oos'} onClick={() => setDue(due === 'oos' ? '' : 'oos')} count={kp.oos}>Needs re-test</Chip>}
         <span className="mx-1 w-px shrink-0 bg-slate-200" />
         <Chip active={!type} onClick={() => setType('')}>All types</Chip>
@@ -207,11 +216,12 @@ export function BuildingPage() {
               const lock = quarterLock(a);
               const retest = a.status === 'out_of_service' || a.status === 'retest_required';
               const where = [floorName(a.floorId), locName(a.locationId)].filter(Boolean).join(', ');
+              const missing = missingDetails(a).filter((m) => m !== 'make'); // the make line already says "Make not recorded"
               return (
               <li key={a.id} data-unit={a.assetTag} className={cx('flex items-center gap-3 px-4 py-3.5 sm:px-5', selected.has(a.id) && 'bg-brand-50/60')}>
                 {selecting && <input type="checkbox" className="h-5 w-5 accent-brand-600" checked={selected.has(a.id)} onChange={() => toggle(a.id)} />}
                 <Link to={`/assets/${a.id}`} className="flex min-w-0 flex-1 items-center gap-3.5" onClick={(e) => { if (selecting) { e.preventDefault(); toggle(a.id); } }}>
-                  <EquipmentAvatar type={a.equipmentType} size={52} tone={a.status === 'out_of_service' ? 'red' : a.status === 'retest_required' ? 'amber' : 'default'} />
+                  <EquipmentAvatar type={a.equipmentType} size={58} tone={a.status === 'out_of_service' ? 'red' : a.status === 'retest_required' ? 'amber' : 'default'} />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-[17px] font-semibold tracking-[-0.01em]">{a.assetTag}</span>
@@ -221,8 +231,13 @@ export function BuildingPage() {
                     <div className="mt-0.5 truncate text-[13px] text-slate-500">
                       {EQUIPMENT_LABELS[a.equipmentType]}{where ? ` · ${where}` : ''} · {a.lastInspectionDate ? `Last inspected ${formatDate(a.lastInspectionDate)}` : 'Never inspected'}
                     </div>
+                    {missing.length > 0 && (
+                      <div data-missing className="mt-1 inline-flex max-w-full items-start gap-1.5 rounded-[9px] bg-amber-500/[.13] px-2 py-0.5 text-[12.5px] font-semibold leading-[18px] text-amber-800">
+                        <CircleAlert className="mt-[2px] h-3.5 w-3.5 shrink-0" /><span className="min-w-0">Missing: {missing.join(', ')}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="hidden sm:block"><QuarterBadge asset={a} /></div>
+                  <div className="hidden sm:block"><QuarterBadge asset={a} short /></div>
                 </Link>
                 {!selecting && can.inspect(user.role) && (retest ? (
                   <Button size="sm" variant="danger" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => startInspection(a)} aria-label={`Re-test ${a.assetTag}`}>
@@ -331,5 +346,5 @@ function Make({ asset }: { asset: Asset }) {
   if (asset.candidateMakes.length) {
     return <div className="mt-1 line-clamp-2 text-[14px] font-medium text-amber-700">{asset.candidateMakes.join(' or ')} <span className="font-normal text-slate-500">(to confirm)</span></div>;
   }
-  return <div className="mt-1 text-[14px] italic text-slate-400">Make not recorded</div>;
+  return <div className="mt-1 flex items-center gap-1.5 text-[14px] font-semibold text-amber-700"><CircleAlert className="h-3.5 w-3.5 shrink-0" />Make not recorded</div>;
 }
