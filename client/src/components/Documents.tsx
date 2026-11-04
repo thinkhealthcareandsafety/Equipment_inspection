@@ -132,7 +132,7 @@ export function PurchaseOrderSheet({ open, onClose, building, docs, startNew }: 
             <Field label="PO date (optional)" group>
               <DateField clearable max={todayISO()} placeholder="Pick the date on the PO" value={date} onChange={setDate} ariaLabel="PO date" />
             </Field>
-            <Field label="Copy of the purchase order" group hint="A clear photo of the paper, or the PDF the client sent. Up to 3 MB.">
+            <Field label="Copy of the purchase order (optional)" group hint="You can save with just the PO number and add the photo or PDF later. Up to 3 MB.">
               {picked || existingFile ? (
                 <div className="flex items-center gap-3 rounded-[16px] bg-black/[.035] p-3">
                   {picked ? <DocThumb doc={{ id: 'new', mime: picked.mime }} src={picked.mime.startsWith('image/') ? picked.url : null} size={56} /> : <DocThumb doc={edit!} size={56} />}
